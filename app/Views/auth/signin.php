@@ -172,7 +172,9 @@
 <script src="<?= base_url('assets/js/scripts.bundle.js') ?>"></script>
 <!--end::Global Javascript Bundle-->
 <!--begin::Custom Javascript(used for this page only)-->
+<script src="<?= base_url('assets/js/csrf-manager.js') ?>"></script>
 <script src="<?= base_url('assets/js/custom/authentication/sign-in/general.js') ?>"></script>
+
 <!--end::Custom Javascript-->
 <!--end::Javascript-->
 </body>

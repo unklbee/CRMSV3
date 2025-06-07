@@ -11,23 +11,23 @@ $routes->get('/', 'Home::index');
 
 // Authentication routes (untuk user yang belum login)
 $routes->group('auth', ['filter' => 'guest'], function($routes) {
-    $routes->get('signin', 'Auth::signin');
-    $routes->post('processLogin', 'Auth::processLogin');
-    $routes->get('signup', 'Auth::signup');
-    $routes->post('processRegister', 'Auth::processRegister');
-    $routes->get('forgot-password', 'Auth::forgotPassword');
-    $routes->post('processForgotPassword', 'Auth::processForgotPassword');
-    $routes->get('reset-password/(:segment)', 'Auth::resetPassword/$1');
-    $routes->post('processResetPassword', 'Auth::processResetPassword');
+    $routes->get('signin', 'AuthController::signin');
+    $routes->post('processLogin', 'AuthController::processLogin');
+    $routes->get('signup', 'AuthController::signup');
+    $routes->post('processRegister', 'AuthController::processRegister');
+    $routes->get('forgot-password', 'AuthController::forgotPassword');
+    $routes->post('processForgotPassword', 'AuthController::processForgotPassword');
+    $routes->get('reset-password/(:segment)', 'AuthController::resetPassword/$1');
+    $routes->post('processResetPassword', 'AuthController::processResetPassword');
 });
 
 // Logout route (untuk user yang sudah login)
-$routes->get('auth/logout', 'Auth::logout', ['filter' => 'auth']);
+$routes->get('auth/logout', 'AuthController::logout', ['filter' => 'auth']);
 
 // Redirect routes untuk kemudahan akses
-$routes->get('login', 'Auth::signin', ['filter' => 'guest']);
-$routes->get('register', 'Auth::signup', ['filter' => 'guest']);
-$routes->get('logout', 'Auth::logout', ['filter' => 'auth']);
+$routes->get('login', 'AuthController::signin', ['filter' => 'guest']);
+$routes->get('register', 'AuthController::signup', ['filter' => 'guest']);
+$routes->get('logout', 'AuthController::logout', ['filter' => 'auth']);
 
 // Dashboard route (bisa diakses oleh semua user yang login)
 $routes->get('dashboard', 'DashboardController::index', ['filter' => 'auth']);

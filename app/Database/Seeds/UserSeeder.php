@@ -17,7 +17,6 @@ class UserSeeder extends Seeder
                 'last_name' => 'Administrator',
                 'phone' => '+62-21-1234567',
                 'role' => 'admin',
-                'status' => 'active',
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s')
             ],
@@ -29,7 +28,6 @@ class UserSeeder extends Seeder
                 'last_name' => 'Ash Shiddiqi',
                 'phone' => '+62-21-1234567',
                 'role' => 'technician',
-                'status' => 'active',
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s')
             ],

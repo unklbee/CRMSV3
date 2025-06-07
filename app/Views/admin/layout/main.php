@@ -7,6 +7,7 @@
     <meta name="description" content="CRMV3"/>
     <meta name="keywords" content="CRMS"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="<?= csrf_token() ?>" content="<?= csrf_hash() ?>">
     <meta property="og:locale" content="id"/>
     <meta property="og:type" content="article"/>
     <meta property="og:title" content="CRMS"/>
@@ -64,16 +65,26 @@
 <!--end::Scrolltop-->
 
 <!--begin::Javascript-->
+<script>
+    // CSRF Configuration
+    window.AppConfig = {
+        baseUrl: '<?= base_url() ?>',
+        csrf: {
+            token: '<?= csrf_token() ?>',
+            hash: '<?= csrf_hash() ?>',
+            headerName: '<?= csrf_header() ?>'
+        }
+    };
+</script>
+
 <script>const hostUrl = "assets/";</script>
 <!--begin::Global Javascript Bundle(mandatory for all pages)-->
 <script src="<?= base_url('assets/plugins/global/plugins.bundle.js') ?>"></script>
 <script src="<?= base_url('assets/js/scripts.bundle.js') ?>"></script>
 <!--end::Global Javascript Bundle-->
 
-<!--begin::Vendors Javascript(used for this page only)-->
-<!--end::Vendors Javascript-->
-
 <!--begin::Custom Javascript(used for this page only)-->
+<?= $this->renderSection('scripts') ?>
 <!--end::Custom Javascript-->
 <!--end::Javascript-->
 </body>
