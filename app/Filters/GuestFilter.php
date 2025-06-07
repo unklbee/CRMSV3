@@ -12,7 +12,7 @@ class GuestFilter implements FilterInterface
     {
         // If user is already logged in, redirect to dashboard
         if (session()->get('logged_in')) {
-            return redirect()->to('/admin/dashboard');
+            return redirect()->to('/dashboard');
         }
     }
 

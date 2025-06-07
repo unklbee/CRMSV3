@@ -3,17 +3,7 @@
 <!--begin::Head-->
 <head>
     <base href="<?= site_url('/') ?>"/>
-    <title>Metronic - The World's #1 Selling Bootstrap Admin Template by KeenThemes</title>
-    <meta charset="utf-8"/>
-    <meta name="description" content="Optiontech"/>
-    <meta name="keywords" content="Optiontech"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <meta property="og:locale" content="en_US"/>
-    <meta property="og:type" content="article"/>
-    <meta property="og:title" content="Optiontech"/>
-    <meta property="og:url" content="#"/>
-    <meta property="og:site_name" content="Metronic by Keenthemes"/>
-    <link rel="canonical" href="#"/>
+    <title>Optiontech</title>
     <link rel="shortcut icon" href="<?= base_url('assets/media/logos/favicon.ico') ?>"/>
     <!--begin::Fonts(mandatory for all pages)-->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700"/>
@@ -24,10 +14,8 @@
     <!--end::Global Stylesheets Bundle-->
     <script>// Frame-busting to prevent site from being loaded within a frame without permission (click-jacking) if (window.top != window.self) { window.top.location.replace(window.self.location.href); }</script>
 </head>
-<!--end::Head-->
-<!--begin::Body-->
 <body id="kt_body" class="auth-bg bgi-size-cover bgi-attachment-fixed bgi-position-center">
-<!--begin::Theme mode setup on page load-->
+
 <script>const defaultThemeMode = "light";
     let themeMode;
     if (document.documentElement) {
@@ -45,11 +33,8 @@
         }
         document.documentElement.setAttribute("data-bs-theme", themeMode);
     }</script>
-<!--end::Theme mode setup on page load-->
-<!--begin::Main-->
-<!--begin::Root-->
+
 <div class="d-flex flex-column flex-root">
-    <!--begin::Page bg image-->
     <style>
         body {
             background-image: url('<?= base_url('assets/media/auth/bg10.jpeg') ?>');
@@ -59,10 +44,9 @@
             background-image: url('<?= base_url('assets/media/auth/bg10-dark.jpeg') ?>');
         }
     </style>
-    <!--end::Page bg image-->
-    <!--begin::Authentication - Sign-in -->
+
     <div class="d-flex flex-column flex-lg-row flex-column-fluid">
-        <!--begin::Aside-->
+
         <div class="d-flex flex-lg-row-fluid">
             <!--begin::Content-->
             <div class="d-flex flex-column flex-center pb-0 pb-lg-10 p-10 w-100">
@@ -87,17 +71,11 @@
             </div>
             <!--end::Content-->
         </div>
-        <!--begin::Aside-->
-        <!--begin::Body-->
-        <?php if (session()->getFlashdata('error')): ?>
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
-                <?= session()->getFlashdata('error') ?>
-            </div>
-        <?php endif; ?>
 
-        <?php if (session()->getFlashdata('success')): ?>
-            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-6">
-                <?= session()->getFlashdata('success') ?>
+        <!--begin::Body-->
+        <?php if (session()->getFlashdata('message')): ?>
+            <div class="alert alert-info">
+                <?= session()->getFlashdata('message') ?>
             </div>
         <?php endif; ?>
 
@@ -110,12 +88,12 @@
                     <div class="d-flex flex-center flex-column flex-column-fluid pb-15 pb-lg-20">
                         <!--begin::Form-->
                         <form class="form w-100" novalidate="novalidate" id="kt_sign_in_form"
-                              data-kt-redirect-url="index.html" action="/admin/login" method="POST">
+                              data-kt-redirect-url="index.html" action="<?= site_url('auth/processLogin') ?>" method="POST">
                             <?= csrf_field() ?>
                             <!--begin::Heading-->
                             <div class="text-center mb-11">
                                 <!--begin::Title-->
-                                <h1 class="text-gray-900 fw-bolder mb-3">Sign In</h1>
+                                <h1 class="text-gray-900 fw-bolder mb-3">Masuk</h1>
                                 <!--end::Title-->
                                 <!--begin::Subtitle-->
                                 <div class="text-gray-500 fw-semibold fs-6">Your Social Campaigns</div>
@@ -124,24 +102,28 @@
                             <!--begin::Heading-->
                             <!--begin::Input group=-->
                             <div class="fv-row mb-8">
-                                <!--begin::Email-->
-                                <input type="text" placeholder="Email" name="email" autocomplete="off"
-                                       class="form-control bg-transparent"/>
-                                <!--end::Email-->
+                                <input type="text" class="form-control bg-transparent" id="identifier"
+                                        name="identifier" placeholder="Enter your username or email" required>
+                                <div class="invalid-feedback" id="identifier-error"></div>
                             </div>
                             <!--end::Input group=-->
                             <div class="fv-row mb-3">
-                                <!--begin::Password-->
-                                <input type="password" placeholder="Password" name="password" autocomplete="off"
-                                       class="form-control bg-transparent"/>
-                                <!--end::Password-->
+                                <input type="password" class="form-control bg-transparent"
+                                        id="password" name="password" laceholder="Enter your password" required>
+                                <div class="invalid-feedback" id="password-error"></div>
                             </div>
                             <!--end::Input group=-->
+
                             <!--begin::Wrapper-->
                             <div class="d-flex flex-stack flex-wrap gap-3 fs-base fw-semibold mb-8">
-                                <div></div>
+                                <div class="mb-3 form-check">
+                                    <input type="checkbox" class="form-check-input" id="remember">
+                                    <label class="form-check-label" for="remember">
+                                        Remember me
+                                    </label>
+                                </div>
                                 <!--begin::Link-->
-                                <a href="#" class="link-primary">Forgot
+                                <a href="<?= base_url('auth/forgot-password') ?>" class="link-primary">Forgot
                                     Password ?</a>
                                 <!--end::Link-->
                             </div>
@@ -153,7 +135,7 @@
                                     <span class="indicator-label">Sign In</span>
                                     <!--end::Indicator label-->
                                     <!--begin::Indicator progress-->
-                                    <span class="indicator-progress">Please wait...
+                                    <span class="indicator-progress">Tunggu ya...
 											<span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
                                     <!--end::Indicator progress-->
                                 </button>
@@ -179,7 +161,7 @@
         </div>
         <!--end::Body-->
     </div>
-    <!--end::Authentication - Sign-in-->
+
 </div>
 <!--end::Root-->
 <!--end::Main-->
