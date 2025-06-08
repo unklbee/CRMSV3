@@ -28,19 +28,21 @@ class AuthFilter implements FilterInterface
         // Update last activity time
         session()->set('last_activity', time());
 
-        // Check if user role is valid untuk area yang dilindungi
+        // Check if user role is valid
         $role = session()->get('role');
-        if (!in_array($role, ['admin', 'technician'])) {
+        if (!in_array($role, ['admin', 'technician', 'customer'])) {
             // Log unauthorized access attempt
             log_message('warning', 'Unauthorized access attempt by user: ' . session()->get('username') . ' with role: ' . $role);
 
-            return $this->redirectToLogin('Unauthorized access');
+            return $this->redirectToLogin('Invalid user role');
         }
 
         // Additional check untuk admin-only routes
         if ($this->isAdminOnlyRoute($request) && $role !== 'admin') {
             return redirect()->to('/dashboard')->with('error', 'Admin access required');
         }
+
+        return null;
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
@@ -50,6 +52,8 @@ class AuthFilter implements FilterInterface
             ->setHeader('X-Content-Type-Options', 'nosniff')
             ->setHeader('X-XSS-Protection', '1; mode=block')
             ->setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+        return $response;
     }
 
     /**
@@ -79,7 +83,8 @@ class AuthFilter implements FilterInterface
         $adminOnlyPaths = [
             '/admin/users',
             '/admin/settings',
-            '/admin/reports'
+            '/admin/audit',
+            '/admin/maintenance'
         ];
 
         foreach ($adminOnlyPaths as $path) {

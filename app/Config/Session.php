@@ -4,44 +4,40 @@ namespace Config;
 
 use CodeIgniter\Config\BaseConfig;
 use CodeIgniter\Session\Handlers\BaseHandler;
-use CodeIgniter\Session\Handlers\RedisHandler;
-use CodeIgniter\Session\Handlers\DatabaseHandler;
 use CodeIgniter\Session\Handlers\FileHandler;
 
 /**
- * Session Configuration yang dioptimasi dan diperbaiki
+ * Session Configuration Fixed untuk Production
  */
 class Session extends BaseConfig
 {
     /**
      * Session driver
-     *
-     * @var class-string<BaseHandler>
      */
     public string $driver = FileHandler::class;
 
     /**
-     * Session cookie name - akan di-set di constructor
+     * Session cookie name
      */
     public string $cookieName = 'ci_session';
 
     /**
-     * Session expiration yang lebih aman (2 jam)
+     * Session expiration - 2 jam
      */
     public int $expiration = 7200;
 
     /**
-     * Save path - akan di-set di constructor
+     * Save path
      */
     public string $savePath = '';
 
     /**
-     * Match IP untuk keamanan tambahan
+     * Match IP - disabled untuk compatibility
      */
     public bool $matchIP = false;
 
     /**
-     * Regenerate session ID lebih sering (5 menit)
+     * Regenerate session ID setiap 5 menit
      */
     public int $timeToUpdate = 300;
 
@@ -56,75 +52,113 @@ class Session extends BaseConfig
     public ?string $DBGroup = 'default';
 
     /**
-     * Redis configuration untuk session
-     */
-    public int $lockRetryInterval = 100_000;
-    public int $lockMaxRetries = 300;
-
-    /**
-     * Constructor untuk set dynamic values
+     * Constructor dengan error handling yang kuat
      */
     public function __construct()
     {
         parent::__construct();
 
-        // Set driver berdasarkan environment
-        if (ENVIRONMENT === 'production') {
-            // Gunakan Redis di production jika tersedia
-            if (extension_loaded('redis')) {
-                $this->driver = RedisHandler::class;
-                $this->savePath = 'tcp://localhost:6379';
-            } else {
-                $this->driver = DatabaseHandler::class;
-                $this->savePath = 'ci_sessions';
-            }
-        } else {
-            // Gunakan file handler di development
-            $this->driver = FileHandler::class;
-            $this->savePath = WRITEPATH . 'session';
-        }
+        // Always use FileHandler untuk stability
+        $this->driver = FileHandler::class;
+
+        // Set save path dengan multiple fallbacks
+        $this->setSavePath();
 
         // Set unique cookie name
         $appHash = substr(md5(APPPATH), 0, 8);
         $this->cookieName = 'ci_session_' . $appHash;
 
-        // Set match IP berdasarkan environment
-        $this->matchIP = (ENVIRONMENT === 'production');
+        // Production settings
+        if (ENVIRONMENT === 'production') {
+            $this->matchIP = false; // Disable untuk avoid issues
+            $this->regenerateDestroy = true;
+        }
     }
 
     /**
-     * Get session configuration array
+     * Set save path dengan multiple fallbacks
+     */
+    private function setSavePath(): void
+    {
+        $primaryPath = WRITEPATH . 'session';
+        $backupPath = sys_get_temp_dir() . '/ci_session';
+
+        try {
+            // Try primary path first
+            if ($this->ensureDirectoryExists($primaryPath)) {
+                $this->savePath = $primaryPath;
+                return;
+            }
+
+            // Fallback to system temp
+            if ($this->ensureDirectoryExists($backupPath)) {
+                $this->savePath = $backupPath;
+                log_message('warning', 'Using fallback session path: ' . $backupPath);
+                return;
+            }
+
+            // Last resort - use system temp directly
+            $this->savePath = sys_get_temp_dir();
+            log_message('warning', 'Using system temp for sessions: ' . $this->savePath);
+
+        } catch (\Exception $e) {
+            log_message('error', 'Session path setup failed: ' . $e->getMessage());
+            $this->savePath = sys_get_temp_dir();
+        }
+    }
+
+    /**
+     * Ensure directory exists and is writable
+     */
+    private function ensureDirectoryExists(string $path): bool
+    {
+        try {
+            // Create directory if not exists
+            if (!is_dir($path)) {
+                if (!mkdir($path, 0755, true)) {
+                    return false;
+                }
+            }
+
+            // Check if writable
+            if (!is_writable($path)) {
+                // Try to fix permissions
+                @chmod($path, 0755);
+
+                if (!is_writable($path)) {
+                    return false;
+                }
+            }
+
+            return true;
+
+        } catch (\Exception $e) {
+            log_message('error', 'Directory creation failed for: ' . $path . ' - ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get session configuration for ini_set
      */
     public function getSessionConfig(): array
     {
         return [
-            'cookie_lifetime' => $this->expiration,
-            'cookie_path' => '/',
-            'cookie_domain' => '',
-            'cookie_secure' => (ENVIRONMENT === 'production'),
-            'cookie_httponly' => true,
-            'cookie_samesite' => 'Lax',
-            'use_strict_mode' => true,
-            'use_cookies' => true,
-            'use_only_cookies' => true,
-            'cache_limiter' => 'nocache',
-            'cache_expire' => 180,
-            'lazy_write' => true,
-            'name' => $this->cookieName,
-        ];
-    }
-
-    /**
-     * Get Redis configuration
-     */
-    public function getRedisConfig(): array
-    {
-        return [
-            'host' => '127.0.0.1',
-            'port' => 6379,
-            'password' => null,
-            'database' => 0,
-            'timeout' => 0,
+            'session.cookie_lifetime' => $this->expiration,
+            'session.cookie_path' => '/',
+            'session.cookie_domain' => '',
+            'session.cookie_secure' => (ENVIRONMENT === 'production' && isset($_SERVER['HTTPS'])),
+            'session.cookie_httponly' => true,
+            'session.cookie_samesite' => 'Lax',
+            'session.use_strict_mode' => 1,
+            'session.use_cookies' => 1,
+            'session.use_only_cookies' => 1,
+            'session.cache_limiter' => 'nocache',
+            'session.cache_expire' => 180,
+            'session.lazy_write' => 1,
+            'session.name' => $this->cookieName,
+            'session.save_path' => $this->savePath,
+            'session.save_handler' => 'files'
         ];
     }
 }

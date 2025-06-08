@@ -21,24 +21,22 @@ class Database extends Config
 
     /**
      * The default database connection.
-     *
-     * @var array<string, mixed>
      */
     public array $default = [
         'DSN'          => '',
         'hostname'     => 'localhost',
-        'username'     => '',
+        'username'     => 'root',
         'password'     => '',
-        'database'     => '',
+        'database'     => 'crmsv3',
         'DBDriver'     => 'MySQLi',
         'DBPrefix'     => '',
-        'pConnect'     => true,
+        'pConnect'     => false,
         'DBDebug'      => true,
         'charset'      => 'utf8mb4',
         'DBCollat'     => 'utf8mb4_unicode_ci',
         'swapPre'      => '',
         'encrypt'      => false,
-        'compress'     => true,
+        'compress'     => false,
         'strictOn'     => false,
         'failover'     => [],
         'port'         => 3306,
@@ -49,141 +47,10 @@ class Database extends Config
             'datetime' => 'Y-m-d H:i:s',
             'time'     => 'H:i:s',
         ],
-        // Optimisasi tambahan
-        'MySQLi' => [
-            'MYSQLI_OPT_CONNECT_TIMEOUT' => 5,
-            'MYSQLI_OPT_READ_TIMEOUT' => 5,
-            'MYSQLI_READ_DEFAULT_GROUP' => 'max_connections=1000',
-            'MYSQLI_OPT_NET_CMD_BUFFER_SIZE' => 16384,
-            'MYSQLI_OPT_NET_READ_BUFFER_SIZE' => 32768,
-        ]
     ];
-
-    /**
-     * Redis cache database untuk session dan caching
-     */
-    public array $redis = [
-        'DSN'      => '',
-        'hostname' => '127.0.0.1',
-        'username' => '',
-        'password' => '',
-        'database' => 'redis',
-        'DBDriver' => 'Redis',
-        'port'     => 6379,
-        'timeout'  => 0,
-        'database' => 0,
-    ];
-
-    //    /**
-    //     * Sample database connection for SQLite3.
-    //     *
-    //     * @var array<string, mixed>
-    //     */
-    //    public array $default = [
-    //        'database'    => 'database.db',
-    //        'DBDriver'    => 'SQLite3',
-    //        'DBPrefix'    => '',
-    //        'DBDebug'     => true,
-    //        'swapPre'     => '',
-    //        'failover'    => [],
-    //        'foreignKeys' => true,
-    //        'busyTimeout' => 1000,
-    //        'synchronous' => null,
-    //        'dateFormat'  => [
-    //            'date'     => 'Y-m-d',
-    //            'datetime' => 'Y-m-d H:i:s',
-    //            'time'     => 'H:i:s',
-    //        ],
-    //    ];
-
-    //    /**
-    //     * Sample database connection for Postgre.
-    //     *
-    //     * @var array<string, mixed>
-    //     */
-    //    public array $default = [
-    //        'DSN'        => '',
-    //        'hostname'   => 'localhost',
-    //        'username'   => 'root',
-    //        'password'   => 'root',
-    //        'database'   => 'ci4',
-    //        'schema'     => 'public',
-    //        'DBDriver'   => 'Postgre',
-    //        'DBPrefix'   => '',
-    //        'pConnect'   => false,
-    //        'DBDebug'    => true,
-    //        'charset'    => 'utf8',
-    //        'swapPre'    => '',
-    //        'failover'   => [],
-    //        'port'       => 5432,
-    //        'dateFormat' => [
-    //            'date'     => 'Y-m-d',
-    //            'datetime' => 'Y-m-d H:i:s',
-    //            'time'     => 'H:i:s',
-    //        ],
-    //    ];
-
-    //    /**
-    //     * Sample database connection for SQLSRV.
-    //     *
-    //     * @var array<string, mixed>
-    //     */
-    //    public array $default = [
-    //        'DSN'        => '',
-    //        'hostname'   => 'localhost',
-    //        'username'   => 'root',
-    //        'password'   => 'root',
-    //        'database'   => 'ci4',
-    //        'schema'     => 'dbo',
-    //        'DBDriver'   => 'SQLSRV',
-    //        'DBPrefix'   => '',
-    //        'pConnect'   => false,
-    //        'DBDebug'    => true,
-    //        'charset'    => 'utf8',
-    //        'swapPre'    => '',
-    //        'encrypt'    => false,
-    //        'failover'   => [],
-    //        'port'       => 1433,
-    //        'dateFormat' => [
-    //            'date'     => 'Y-m-d',
-    //            'datetime' => 'Y-m-d H:i:s',
-    //            'time'     => 'H:i:s',
-    //        ],
-    //    ];
-
-    //    /**
-    //     * Sample database connection for OCI8.
-    //     *
-    //     * You may need the following environment variables:
-    //     *   NLS_LANG                = 'AMERICAN_AMERICA.UTF8'
-    //     *   NLS_DATE_FORMAT         = 'YYYY-MM-DD HH24:MI:SS'
-    //     *   NLS_TIMESTAMP_FORMAT    = 'YYYY-MM-DD HH24:MI:SS'
-    //     *   NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS'
-    //     *
-    //     * @var array<string, mixed>
-    //     */
-    //    public array $default = [
-    //        'DSN'        => 'localhost:1521/XEPDB1',
-    //        'username'   => 'root',
-    //        'password'   => 'root',
-    //        'DBDriver'   => 'OCI8',
-    //        'DBPrefix'   => '',
-    //        'pConnect'   => false,
-    //        'DBDebug'    => true,
-    //        'charset'    => 'AL32UTF8',
-    //        'swapPre'    => '',
-    //        'failover'   => [],
-    //        'dateFormat' => [
-    //            'date'     => 'Y-m-d',
-    //            'datetime' => 'Y-m-d H:i:s',
-    //            'time'     => 'H:i:s',
-    //        ],
-    //    ];
 
     /**
      * This database connection is used when running PHPUnit database tests.
-     *
-     * @var array<string, mixed>
      */
     public array $tests = [
         'DSN'         => '',
@@ -192,7 +59,7 @@ class Database extends Config
         'password'    => '',
         'database'    => ':memory:',
         'DBDriver'    => 'SQLite3',
-        'DBPrefix'    => 'db_',  // Needed to ensure we're working correctly with prefixes live. DO NOT REMOVE FOR CI DEVS
+        'DBPrefix'    => 'db_',
         'pConnect'    => false,
         'DBDebug'     => true,
         'charset'     => 'utf8',
@@ -221,6 +88,20 @@ class Database extends Config
         // we don't overwrite live data on accident.
         if (ENVIRONMENT === 'testing') {
             $this->defaultGroup = 'tests';
+        }
+
+        // Set database config from environment variables jika ada
+        if (!empty(env('database.default.hostname'))) {
+            $this->default['hostname'] = env('database.default.hostname');
+        }
+        if (!empty(env('database.default.username'))) {
+            $this->default['username'] = env('database.default.username');
+        }
+        if (!empty(env('database.default.password'))) {
+            $this->default['password'] = env('database.default.password');
+        }
+        if (!empty(env('database.default.database'))) {
+            $this->default['database'] = env('database.default.database');
         }
     }
 }

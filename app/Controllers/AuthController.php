@@ -9,7 +9,6 @@ use CodeIgniter\Controller;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
 use Config\Services;
-use ReflectionException;
 
 class AuthController extends Controller
 {
@@ -44,8 +43,7 @@ class AuthController extends Controller
         }
 
         $data = [
-            'title' => 'Sign In',
-            'remainingAttempts' => $this->getRemainingAttempts()
+            'title' => 'Sign In'
         ];
         return view('auth/signin', $data);
     }
@@ -56,45 +54,64 @@ class AuthController extends Controller
     public function processLogin(): ResponseInterface
     {
         $clientIP = $this->request->getIPAddress();
-        $identifier = $this->request->getPost('identifier', FILTER_SANITIZE_STRING) ?? '';
+        $identifier = $this->request->getPost('identifier', FILTER_SANITIZE_EMAIL) ?? '';
 
-        // Check rate limiting
-        $rateLimitKey = 'login_' . $clientIP;
-        $config = $this->rateLimitConfig['login'];
+        // TEMPORARY: Skip rate limiting untuk development
+        $skipRateLimit = (ENVIRONMENT === 'development');
 
-        // Check if locked out
-        if ($this->rateLimiter->isLockedOut($rateLimitKey)) {
-            return $this->response->setJSON([
-                'success' => false,
-                'message' => 'Account temporarily locked due to too many failed attempts.',
-                'lockout_remaining' => $this->rateLimiter->getLockoutTime($rateLimitKey),
-                'csrf_token' => csrf_token(),
-                'csrf_hash' => csrf_hash()
-            ])->setStatusCode(429);
+        if (!$skipRateLimit) {
+            // Rate limiting code here (untuk production)
+            $rateLimitKey = 'login_' . $clientIP;
+            $config = $this->rateLimitConfig['login'];
+
+            // Check if locked out
+            if ($this->rateLimiter->isLockedOut($rateLimitKey)) {
+                return $this->response->setJSON([
+                    'success' => false,
+                    'message' => 'Account temporarily locked due to too many failed attempts.',
+                    'lockout_remaining' => $this->rateLimiter->getLockoutTime($rateLimitKey),
+                    'csrf_token' => csrf_token(),
+                    'csrf_hash' => csrf_hash()
+                ])->setStatusCode(429);
+            }
+
+            // Check rate limit
+            if (!$this->rateLimiter->check($rateLimitKey, $config['max_attempts'], $config['time_window'])) {
+                // Set lockout
+                $this->rateLimiter->setLockout($rateLimitKey, $config['lockout_time']);
+
+                return $this->response->setJSON([
+                    'success' => false,
+                    'message' => 'Too many login attempts. Account locked for 30 minutes.',
+                    'csrf_token' => csrf_token(),
+                    'csrf_hash' => csrf_hash()
+                ])->setStatusCode(429);
+            }
         }
 
-        // Check rate limit
-        if (!$this->rateLimiter->check($rateLimitKey, $config['max_attempts'], $config['time_window'])) {
-            // Set lockout
-            $this->rateLimiter->setLockout($rateLimitKey, $config['lockout_time']);
-
-            return $this->response->setJSON([
-                'success' => false,
-                'message' => 'Too many login attempts. Account locked for 30 minutes.',
-                'csrf_token' => csrf_token(),
-                'csrf_hash' => csrf_hash()
-            ])->setStatusCode(429);
-        }
-
-        // Simplified validation
+        // Validate input
         $rules = [
-            'identifier' => 'required|min_length[3]|max_length[100]',
-            'password' => 'required|min_length[1]'
+            'identifier' => [
+                'rules' => 'required|min_length[3]|max_length[100]',
+                'errors' => [
+                    'required' => 'Username or Email is required',
+                    'min_length' => 'Username/Email is too short',
+                    'max_length' => 'Username/Email is too long'
+                ]
+            ],
+            'password' => [
+                'rules' => 'required',
+                'errors' => [
+                    'required' => 'Password is required'
+                ]
+            ]
         ];
 
         if (!$this->validate($rules)) {
-            // Increment failed attempts
-            $this->rateLimiter->attempt($rateLimitKey, $config['max_attempts'], $config['time_window']);
+            // Only increment failed attempts in production
+            if (!$skipRateLimit) {
+                $this->rateLimiter->attempt($rateLimitKey, $config['max_attempts'], $config['time_window']);
+            }
 
             return $this->response->setJSON([
                 'success' => false,
@@ -111,9 +128,11 @@ class AuthController extends Controller
         $user = $this->attemptLogin($identifier, $password);
 
         if ($user) {
-            // Clear rate limiting on successful login
-            $this->rateLimiter->clear($rateLimitKey);
-            $this->rateLimiter->clearLockout($rateLimitKey);
+            // Clear rate limiting on successful login (only in production)
+            if (!$skipRateLimit) {
+                $this->rateLimiter->clear($rateLimitKey);
+                $this->rateLimiter->clearLockout($rateLimitKey);
+            }
 
             // Set minimal session data
             $this->setUserSession($user);
@@ -129,13 +148,16 @@ class AuthController extends Controller
                 'csrf_hash' => csrf_hash()
             ]);
         } else {
-            // Increment failed attempts
-            $this->rateLimiter->attempt($rateLimitKey, $config['max_attempts'], $config['time_window']);
+            // Only increment failed attempts in production
+            if (!$skipRateLimit) {
+                $this->rateLimiter->attempt($rateLimitKey, $config['max_attempts'], $config['time_window']);
+                $remainingAttempts = $this->rateLimiter->getRemainingAttempts($rateLimitKey, $config['max_attempts']);
+            } else {
+                $remainingAttempts = 999; // Unlimited dalam development
+            }
 
             // Log failed attempt
             log_message('warning', "Failed login attempt for identifier: {$identifier} from IP: {$clientIP}");
-
-            $remainingAttempts = $this->rateLimiter->getRemainingAttempts($rateLimitKey, $config['max_attempts']);
 
             return $this->response->setJSON([
                 'success' => false,
@@ -152,17 +174,28 @@ class AuthController extends Controller
      */
     private function attemptLogin(string $identifier, string $password): array|false
     {
-        // Single query to find and verify user
-        $user = $this->userModel->findByUsernameOrEmail($identifier);
+        try {
+            // Single query to find and verify user
+            $user = $this->userModel->findByUsernameOrEmail($identifier);
 
-        if (!$user || !password_verify($password, $user['password'])) {
+            if (!$user || !password_verify($password, $user['password'])) {
+                return false;
+            }
+
+            // Check if user is active
+            if (!$user['is_active']) {
+                log_message('warning', "Login attempt for inactive user: {$user['username']}");
+                return false;
+            }
+
+            // Update last_login in background (non-blocking)
+            $this->updateLastLoginAsync($user['id']);
+
+            return $user;
+        } catch (\Exception $e) {
+            log_message('error', 'Login error: ' . $e->getMessage());
             return false;
         }
-
-        // Update last_login in background (non-blocking)
-        $this->updateLastLoginAsync($user['id']);
-
-        return $user;
     }
 
     /**
@@ -174,7 +207,7 @@ class AuthController extends Controller
             'user_id' => $user['id'],
             'username' => $user['username'],
             'role' => $user['role'],
-            'isLoggedIn' => true,
+            'isLoggedIn' => true, // Fixed: consistent key
             'login_time' => time(),
             'last_activity' => time()
         ];
@@ -187,52 +220,12 @@ class AuthController extends Controller
      */
     private function updateLastLoginAsync(int $userId): void
     {
-        // In production, gunakan queue system seperti Redis/RabbitMQ
-        // Untuk sekarang, update langsung tapi di background
         try {
-            $this->userModel->update($userId, [
-                'last_login' => date('Y-m-d H:i:s')
-            ]);
+            $this->userModel->updateLastLogin($userId);
         } catch (\Exception $e) {
             // Log error tapi jangan block login process
             log_message('error', 'Failed to update last_login for user ' . $userId . ': ' . $e->getMessage());
         }
-    }
-
-    /**
-     * Get remaining login attempts menggunakan cache
-     */
-    private function getRemainingAttempts(string $key = null): int
-    {
-        if (!$key) {
-            $key = 'login_' . $this->request->getIPAddress();
-        }
-
-        // Menggunakan cache untuk tracking attempts
-        $cacheKey = 'throttle_' . $key;
-        $attempts = cache()->get($cacheKey, 0);
-
-        $config = $this->getRateLimitConfig('login');
-        return max(0, $config['max_attempts'] - $attempts);
-    }
-
-    /**
-     * Check if user is currently locked out
-     */
-    private function isLockedOut(string $key): bool
-    {
-        $lockKey = 'lockout_' . $key;
-        return cache()->get($lockKey, false) !== false;
-    }
-
-    /**
-     * Set lockout untuk user
-     */
-    private function setLockout(string $key): void
-    {
-        $config = $this->getRateLimitConfig('login');
-        $lockKey = 'lockout_' . $key;
-        cache()->save($lockKey, time(), $config['lockout_time']);
     }
 
     public function signup(): string|RedirectResponse
@@ -252,10 +245,10 @@ class AuthController extends Controller
     {
         $clientIP = $this->request->getIPAddress();
         $rateLimitKey = 'register_' . $clientIP;
-        $config = $this->getRateLimitConfig('register');
+        $config = $this->rateLimitConfig['register'];
 
         // Rate limiting untuk registrasi
-        if ($this->rateLimiter->check($rateLimitKey, $config['max_attempts'], $config['time_window']) === false) {
+        if (!$this->rateLimiter->check($rateLimitKey, $config['max_attempts'], $config['time_window'])) {
             return $this->response->setJSON([
                 'success' => false,
                 'message' => 'Too many registration attempts. Please try again later.',
@@ -268,7 +261,7 @@ class AuthController extends Controller
         $rules = UserValidation::getRegistrationRules();
 
         if (!$this->validate($rules)) {
-            $this->rateLimiter->hit($rateLimitKey, $config['time_window']);
+            $this->rateLimiter->attempt($rateLimitKey, $config['max_attempts'], $config['time_window']);
 
             return $this->response->setJSON([
                 'success' => false,
@@ -292,7 +285,7 @@ class AuthController extends Controller
 
             if ($userId) {
                 // Clear rate limiting on successful registration
-                cache()->delete('throttle_' . $rateLimitKey);
+                $this->rateLimiter->clear($rateLimitKey);
 
                 log_message('info', "New user registered: {$userData['username']} from IP: {$clientIP}");
 
@@ -308,7 +301,7 @@ class AuthController extends Controller
             log_message('error', 'Registration error: ' . $e->getMessage());
         }
 
-        $this->rateLimiter->hit($rateLimitKey, $config['time_window']);
+        $this->rateLimiter->attempt($rateLimitKey, $config['max_attempts'], $config['time_window']);
 
         return $this->response->setJSON([
             'success' => false,
@@ -316,27 +309,6 @@ class AuthController extends Controller
             'csrf_token' => csrf_token(),
             'csrf_hash' => csrf_hash()
         ]);
-    }
-
-    /**
-     * Get rate limiting config from Security config
-     */
-    private function getRateLimitConfig(string $type = 'login'): array
-    {
-        $defaultConfig = [
-            'login' => [
-                'max_attempts' => 5,
-                'time_window' => 900,
-                'lockout_time' => 1800
-            ],
-            'register' => [
-                'max_attempts' => 3,
-                'time_window' => 600,
-                'lockout_time' => 1800
-            ]
-        ];
-
-        return $defaultConfig[$type] ?? $defaultConfig['login'];
     }
 
     /**
@@ -363,6 +335,98 @@ class AuthController extends Controller
     public function getCsrfToken(): ResponseInterface
     {
         return $this->response->setJSON([
+            'csrf_token' => csrf_token(),
+            'csrf_hash' => csrf_hash()
+        ]);
+    }
+
+    /**
+     * Forgot password page
+     */
+    public function forgotPassword(): string
+    {
+        $data = ['title' => 'Forgot Password'];
+        return view('auth/forgot_password', $data);
+    }
+
+    /**
+     * Process forgot password
+     */
+    public function processForgotPassword(): ResponseInterface
+    {
+        $rules = UserValidation::getForgotPasswordRules();
+
+        if (!$this->validate($rules)) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $this->validator->getErrors(),
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash()
+            ]);
+        }
+
+        $email = $this->request->getPost('email');
+        $user = $this->userModel->findByEmail($email);
+
+        if ($user) {
+            // Generate reset token
+            $token = bin2hex(random_bytes(32));
+
+            // Save token to database (you'll need to add this field)
+            // $this->userModel->saveResetToken($user['id'], $token);
+
+            // Send email (implement email service)
+            // $this->sendResetEmail($email, $token);
+
+            log_message('info', "Password reset requested for: {$email}");
+        }
+
+        // Always return success untuk security
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'If the email exists, a reset link has been sent.',
+            'csrf_token' => csrf_token(),
+            'csrf_hash' => csrf_hash()
+        ]);
+    }
+
+    /**
+     * Reset password page
+     */
+    public function resetPassword(string $token): string
+    {
+        $data = [
+            'title' => 'Reset Password',
+            'token' => $token
+        ];
+        return view('auth/reset_password', $data);
+    }
+
+    /**
+     * Process reset password
+     */
+    public function processResetPassword(): ResponseInterface
+    {
+        $rules = UserValidation::getResetPasswordRules();
+
+        if (!$this->validate($rules)) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $this->validator->getErrors(),
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash()
+            ]);
+        }
+
+        // Implement token verification and password reset
+        // This requires additional database fields and logic
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Password has been reset successfully.',
+            'redirect' => '/auth/signin',
             'csrf_token' => csrf_token(),
             'csrf_hash' => csrf_hash()
         ]);

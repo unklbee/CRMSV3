@@ -15,11 +15,15 @@ class SecurityMiddleware implements FilterInterface
     private const MAX_REQUEST_SIZE = 1048576; // 1MB
     private const SUSPICIOUS_PATTERNS = [
         '/\b(union\s+select|insert\s+into|drop\s+table|delete\s+from)\b/i',
-        '/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi',
+        '/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/i', // Fixed: removed 'g' flag
         '/javascript:/i',
         '/vbscript:/i',
         '/onload\s*=/i',
-        '/onerror\s*=/i'
+        '/onerror\s*=/i',
+        '/onclick\s*=/i',
+        '/onmouseover\s*=/i',
+        '/expression\s*\(/i',
+        '/eval\s*\(/i'
     ];
 
     public function before(RequestInterface $request, $arguments = null)
@@ -46,6 +50,8 @@ class SecurityMiddleware implements FilterInterface
             log_message('info', 'Invalid user agent from IP: ' . $request->getIPAddress());
             return Services::response()->setStatusCode(400)->setBody('Invalid request');
         }
+
+        return null;
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
@@ -56,13 +62,23 @@ class SecurityMiddleware implements FilterInterface
             ->setHeader('X-XSS-Protection', '1; mode=block')
             ->setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
             ->setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
-            ->setHeader('X-Permitted-Cross-Domain-Policies', 'none')
-            ->setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-            ->setHeader('Pragma', 'no-cache')
-            ->setHeader('Expires', 'Thu, 01 Jan 1970 00:00:00 GMT');
+            ->setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+
+        // Add cache control hanya untuk halaman sensitif
+        $sensitivePages = ['/admin', '/auth/processLogin', '/profile'];
+        $currentPath = $request->getUri()->getPath();
+
+        foreach ($sensitivePages as $page) {
+            if (str_starts_with($currentPath, $page)) {
+                $response->setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                    ->setHeader('Pragma', 'no-cache')
+                    ->setHeader('Expires', 'Thu, 01 Jan 1970 00:00:00 GMT');
+                break;
+            }
+        }
 
         // Content Security Policy untuk halaman admin
-        if (str_starts_with($request->getUri()->getPath(), '/admin')) {
+        if (str_starts_with($currentPath, '/admin')) {
             $csp = "default-src 'self'; " .
                 "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " .
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
@@ -73,6 +89,8 @@ class SecurityMiddleware implements FilterInterface
 
             $response->setHeader('Content-Security-Policy', $csp);
         }
+
+        return $response;
     }
 
     /**
@@ -95,8 +113,8 @@ class SecurityMiddleware implements FilterInterface
      */
     private function containsSuspiciousContent(RequestInterface $request): bool
     {
-        $content = strtolower($request->getBody());
-        $uri = strtolower($request->getUri()->getPath());
+        $content = $request->getBody();
+        $uri = $request->getUri()->getPath();
 
         // Check all input data
         $allData = array_merge(
@@ -106,9 +124,11 @@ class SecurityMiddleware implements FilterInterface
         );
 
         foreach ($allData as $value) {
-            if (is_string($value)) {
-                foreach (self::SUSPICIOUS_PATTERNS as $pattern) {
-                    if (preg_match($pattern, $value)) {
+            if (is_string($value) && $this->checkSuspiciousString($value)) {
+                return true;
+            } elseif (is_array($value)) {
+                foreach ($value as $subValue) {
+                    if (is_string($subValue) && $this->checkSuspiciousString($subValue)) {
                         return true;
                     }
                 }
@@ -119,15 +139,34 @@ class SecurityMiddleware implements FilterInterface
     }
 
     /**
+     * Check individual string for suspicious patterns
+     */
+    private function checkSuspiciousString(string $value): bool
+    {
+        foreach (self::SUSPICIOUS_PATTERNS as $pattern) {
+            if (preg_match($pattern, $value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Rate limiting check
      */
     private function checkRateLimit(RequestInterface $request): bool
     {
-        $throttler = Services::throttler();
-        $ip = $request->getIPAddress();
+        try {
+            $throttler = Services::throttler();
+            $ip = $request->getIPAddress();
 
-        // Global rate limit: 100 requests per minute
-        return $throttler->check($ip, 100, MINUTE) !== false;
+            // Global rate limit: 100 requests per minute
+            return $throttler->check($ip, 100, MINUTE) !== false;
+        } catch (\Exception $e) {
+            // If throttler fails, allow request but log error
+            log_message('error', 'Throttler error: ' . $e->getMessage());
+            return true;
+        }
     }
 
     /**
@@ -137,13 +176,13 @@ class SecurityMiddleware implements FilterInterface
     {
         $userAgent = $request->getUserAgent()->getAgentString();
 
-        // Block empty user agents
+        // Allow empty user agents for now (some legitimate tools don't send UA)
         if (empty($userAgent)) {
-            return false;
+            return true; // Changed from false to true
         }
 
-        // Block suspicious user agents
-        $suspiciousAgents = [
+        // Block known malicious user agents
+        $maliciousAgents = [
             'sqlmap',
             'nikto',
             'nessus',
@@ -151,14 +190,12 @@ class SecurityMiddleware implements FilterInterface
             'w3af',
             'skipfish',
             'burp',
-            'python-requests',
-            'curl/',
-            'wget'
+            'acunetix'
         ];
 
         $userAgentLower = strtolower($userAgent);
-        foreach ($suspiciousAgents as $suspicious) {
-            if (str_contains($userAgentLower, $suspicious)) {
+        foreach ($maliciousAgents as $malicious) {
+            if (str_contains($userAgentLower, $malicious)) {
                 return false;
             }
         }

@@ -1,39 +1,14 @@
 "use strict";
 
-// Class definition
-var KTSigninGeneral = function () {
+// Class Definition
+const KTSigninGeneral = function() {
     // Elements
-    var form;
-    var submitButton;
-    var validator;
+    let form;
+    let submitButton;
+    let validator;
 
-    // Wait for CSRFManager to be available
-    var waitForCSRFManager = function() {
-        return new Promise((resolve) => {
-            if (window.CSRFManager && window.CSRFManager.isValid()) {
-                resolve(window.CSRFManager);
-                return;
-            }
-
-            // Check every 100ms for up to 5 seconds
-            let attempts = 0;
-            const maxAttempts = 50;
-
-            const checkInterval = setInterval(() => {
-                attempts++;
-
-                if (window.CSRFManager && window.CSRFManager.isValid()) {
-                    clearInterval(checkInterval);
-                    resolve(window.CSRFManager);
-                } else if (attempts >= maxAttempts) {
-                    clearInterval(checkInterval);
-                    resolve(null);
-                }
-            }, 100);
-        });
-    };
-
-    var handleValidation = function () {
+    // Handle form
+    const handleValidation = function() {
         // Init form validation rules
         validator = FormValidation.formValidation(
             form,
@@ -43,6 +18,11 @@ var KTSigninGeneral = function () {
                         validators: {
                             notEmpty: {
                                 message: 'Username or Email is required'
+                            },
+                            stringLength: {
+                                min: 3,
+                                max: 100,
+                                message: 'Username/Email must be between 3 and 100 characters'
                             }
                         }
                     },
@@ -66,246 +46,176 @@ var KTSigninGeneral = function () {
         );
     };
 
-    var handleSubmitDemo = function () {
+    const handleSubmitDemo = function() {
         // Handle form submit
-        submitButton.addEventListener('click', async function (e) {
+        submitButton.addEventListener('click', function (e) {
             // Prevent default button action
             e.preventDefault();
 
             // Validate form before submit
             if (validator) {
-                const status = await validator.validate();
+                validator.validate().then(function (status) {
+                    if (status == 'Valid') {
+                        // Show loading indication
+                        submitButton.setAttribute('data-kt-indicator', 'on');
 
-                if (status === 'Valid') {
-                    // Show loading indication
-                    submitButton.setAttribute('data-kt-indicator', 'on');
+                        // Disable submit button
+                        submitButton.disabled = true;
 
-                    // Disable button to avoid multiple click
-                    submitButton.disabled = true;
-
-                    // Submit form via AJAX
-                    await submitForm();
-                }
+                        // Submit form via AJAX
+                        submitForm();
+                    }
+                });
             }
         });
     };
 
-    var submitForm = async function() {
-        try {
-            // Wait for CSRF Manager to be ready
-            const csrfManager = await waitForCSRFManager();
+    const submitForm = function() {
+        const formData = new FormData(form);
 
-            if (!csrfManager) {
-                throw new Error('CSRF Manager not available');
-            }
-
-            // Prepare form data
-            const formData = new FormData(form);
-
-            // Add CSRF token using manager
-            csrfManager.addToFormData(formData);
-
-            // Submit form
-            const response = await fetch(form.action, {
-                method: 'POST',
-                body: formData,
-                headers: csrfManager.getHeaders()
-            });
-
-            // Check if response is successful
-            if (!response.ok) {
-                if (response.status === 403) {
-                    throw new Error('CSRF_ERROR');
-                }
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            // Parse JSON response
-            const data = await response.json();
-
-            // Update CSRF token if provided
-            if (data.csrf_token && data.csrf_hash) {
-                csrfManager.updateToken(data.csrf_token, data.csrf_hash);
-            }
-
-            // Reset UI
-            submitButton.removeAttribute('data-kt-indicator');
-            submitButton.disabled = false;
-
-            if (data.success) {
-                await handleLoginSuccess(data);
-            } else {
-                handleLoginError(data);
-            }
-
-        } catch (error) {
-
-            // Reset UI
-            submitButton.removeAttribute('data-kt-indicator');
-            submitButton.disabled = false;
-
-            // Handle CSRF errors
-            if (error.message === 'CSRF_ERROR') {
-                await handleCSRFError();
-            } else {
-                showGenericError(error.message);
-            }
+        // Get CSRF token
+        const csrfToken = document.querySelector('meta[name="csrf-token"]');
+        if (csrfToken) {
+            formData.append(csrfToken.getAttribute('name'), csrfToken.getAttribute('content'));
         }
-    };
 
-    var handleCSRFError = async function() {
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                // Hide loading indication
+                submitButton.removeAttribute('data-kt-indicator');
+                submitButton.disabled = false;
 
-        try {
-            const csrfManager = await waitForCSRFManager();
-            if (csrfManager) {
-                const recovered = await csrfManager.handleCsrfError();
-
-                if (recovered) {
-
-                    // Show user that we're retrying
+                if (data.success) {
+                    // Show success message
                     Swal.fire({
-                        title: 'Retrying...',
-                        text: 'Please wait while we retry your request.',
-                        icon: 'info',
-                        allowOutsideClick: false,
-                        showConfirmButton: false,
-                        timer: 1000
-                    }).then(() => {
-                        // Retry the request
-                        submitForm();
+                        text: data.message || "Login successful!",
+                        icon: "success",
+                        buttonsStyling: false,
+                        confirmButtonText: "Ok, got it!",
+                        customClass: {
+                            confirmButton: "btn btn-primary"
+                        }
+                    }).then(function (result) {
+                        if (result.isConfirmed) {
+                            // Redirect to dashboard
+                            window.location.href = data.redirect || '/dashboard';
+                        }
+                    });
+                } else {
+                    // Show error message
+                    let errorMessage = data.message || 'Login failed. Please try again.';
+
+                    // Add remaining attempts info if available
+                    if (data.remaining_attempts !== undefined) {
+                        errorMessage += ` (${data.remaining_attempts} attempts remaining)`;
+                    }
+
+                    Swal.fire({
+                        text: errorMessage,
+                        icon: "error",
+                        buttonsStyling: false,
+                        confirmButtonText: "Ok, got it!",
+                        customClass: {
+                            confirmButton: "btn btn-primary"
+                        }
                     });
 
-                    return;
+                    // Update CSRF token if provided
+                    if (data.csrf_token && data.csrf_hash) {
+                        updateCSRFToken(data.csrf_token, data.csrf_hash);
+                    }
+
+                    // Show field errors if any
+                    if (data.errors) {
+                        showFieldErrors(data.errors);
+                    }
                 }
-            }
-        } catch (error) {
-            console.error('Failed to recover from CSRF error:', error);
+            })
+            .catch(error => {
+                console.error('Login error:', error);
+
+                // Hide loading indication
+                submitButton.removeAttribute('data-kt-indicator');
+                submitButton.disabled = false;
+
+                Swal.fire({
+                    text: "Sorry, looks like there are some errors detected, please try again.",
+                    icon: "error",
+                    buttonsStyling: false,
+                    confirmButtonText: "Ok, got it!",
+                    customClass: {
+                        confirmButton: "btn btn-primary"
+                    }
+                });
+            });
+    };
+
+    const updateCSRFToken = function(token, hash) {
+        // Update CSRF meta tag
+        const csrfToken = document.querySelector('meta[name="csrf-token"]');
+        if (csrfToken) {
+            csrfToken.setAttribute('content', hash);
         }
 
-        // If recovery failed, show error
-        Swal.fire({
-            title: 'Session Expired',
-            text: 'Your session has expired. Please refresh the page and try again.',
-            icon: 'warning',
-            confirmButtonText: 'Refresh Page',
-            allowOutsideClick: false
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location.reload();
-            }
-        });
-    };
-
-    var handleLoginSuccess = async function(data) {
-        // Show success message
-        await Swal.fire({
-            text: data.message || 'Login successful!',
-            icon: "success",
-            buttonsStyling: false,
-            confirmButtonText: "Ok, got it!",
-            customClass: {
-                confirmButton: "btn btn-primary"
-            }
-        });
-
-        // Clear form
-        form.querySelector('[name="identifier"]').value = "";
-        form.querySelector('[name="password"]').value = "";
-
-        // Redirect
-        const redirectUrl = data.redirect || "/dashboard";
-        window.location.href = redirectUrl;
-    };
-
-    var handleLoginError = function(data) {
-        const errorMessage = data.message || 'An error occurred during login';
-
-        // If there are validation errors
-        if (data.errors) {
-            // Clear previous errors
-            clearErrors();
-
-            // Show field-specific errors
-            Object.keys(data.errors).forEach(function(field) {
-                showFieldError(field, data.errors[field]);
-            });
-        } else {
-            // Show general error
-            Swal.fire({
-                text: errorMessage,
-                icon: "error",
-                buttonsStyling: false,
-                confirmButtonText: "Ok, got it!",
-                customClass: {
-                    confirmButton: "btn btn-primary"
-                }
-            });
+        // Update CSRF hidden input
+        const csrfInput = form.querySelector('input[name="' + token + '"]');
+        if (csrfInput) {
+            csrfInput.value = hash;
         }
     };
 
-    var showGenericError = function(errorMessage) {
-        const message = errorMessage || "Sorry, looks like there are some errors detected, please try again.";
-
-        Swal.fire({
-            text: message,
-            icon: "error",
-            buttonsStyling: false,
-            confirmButtonText: "Ok, got it!",
-            customClass: {
-                confirmButton: "btn btn-primary"
-            }
+    const showFieldErrors = function(errors) {
+        // Clear previous errors
+        form.querySelectorAll('.invalid-feedback').forEach(el => {
+            el.textContent = '';
+            el.style.display = 'none';
         });
-    };
 
-    var showFieldError = function(fieldName, message) {
-        const field = form.querySelector(`[name="${fieldName}"]`);
-        if (field) {
-            field.classList.add('is-invalid');
-            const errorDiv = document.getElementById(`${fieldName}-error`);
+        form.querySelectorAll('.is-invalid').forEach(el => {
+            el.classList.remove('is-invalid');
+        });
+
+        // Show new errors
+        Object.keys(errors).forEach(field => {
+            const input = form.querySelector(`[name="${field}"]`);
+            const errorDiv = form.querySelector(`#${field}-error`);
+
+            if (input) {
+                input.classList.add('is-invalid');
+            }
+
             if (errorDiv) {
-                errorDiv.textContent = message;
+                errorDiv.textContent = errors[field];
                 errorDiv.style.display = 'block';
             }
-        }
-    };
-
-    var clearErrors = function() {
-        const errorElements = form.querySelectorAll('.is-invalid');
-        errorElements.forEach(function(element) {
-            element.classList.remove('is-invalid');
-        });
-
-        const errorDivs = form.querySelectorAll('.invalid-feedback');
-        errorDivs.forEach(function(div) {
-            div.style.display = 'none';
-            div.textContent = '';
         });
     };
 
-    // Public functions
+    // Public Functions
     return {
         // Initialization
-        init: async function () {
+        init: function() {
             form = document.querySelector('#kt_sign_in_form');
             submitButton = document.querySelector('#kt_sign_in_submit');
 
-            if (form && submitButton) {
-
-                handleValidation();
-                handleSubmitDemo();
+            if (!form || !submitButton) {
+                return;
             }
+
+            handleValidation();
+            handleSubmitDemo();
         }
     };
 }();
 
 // On document ready
-if (typeof KTUtil !== 'undefined' && KTUtil.onDOMContentLoaded) {
-    KTUtil.onDOMContentLoaded(function () {
-        KTSigninGeneral.init();
-    });
-} else {
-    // Fallback if KTUtil is not available
-    document.addEventListener('DOMContentLoaded', function() {
-        KTSigninGeneral.init();
-    });
-}
+KTUtil.onDOMContentLoaded(function() {
+    KTSigninGeneral.init();
+});

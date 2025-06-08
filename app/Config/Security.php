@@ -101,7 +101,7 @@ class Security extends BaseConfig
     {
         return [
             'login' => [
-                'max_attempts' => 5,
+                'max_attempts' => 10,
                 'time_window' => 900, // 15 menit
                 'lockout_time' => 1800 // 30 menit
             ],
