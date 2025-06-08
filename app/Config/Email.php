@@ -125,23 +125,29 @@ class Email extends BaseConfig
     {
         parent::__construct();
 
-        // Load from environment variables
-        $this->fromEmail = env('EMAIL_FROM_ADDRESS', 'noreply@yourapp.com');
-        $this->fromName = env('EMAIL_FROM_NAME', 'Your App Name');
-        $this->protocol = env('EMAIL_PROTOCOL', 'mail');
-        $this->SMTPHost = env('EMAIL_SMTP_HOST', '');
-        $this->SMTPUser = env('EMAIL_SMTP_USER', '');
-        $this->SMTPPass = env('EMAIL_SMTP_PASS', '');
-        $this->SMTPPort = (int) env('EMAIL_SMTP_PORT', 587);
-        $this->SMTPCrypto = env('EMAIL_SMTP_CRYPTO', 'tls');
+        // Load from environment variables dengan fallback
+        $this->fromEmail = env('email.fromEmail', env('EMAIL_FROM_ADDRESS', 'cs@optiontech.id'));
+        $this->fromName = env('email.fromName', env('EMAIL_FROM_NAME', 'Computer Repair Shop'));
+        $this->protocol = env('email.protocol', env('EMAIL_PROTOCOL', 'mail'));
+        $this->SMTPHost = env('email.SMTPHost', env('EMAIL_SMTP_HOST', ''));
+        $this->SMTPUser = env('email.SMTPUser', env('EMAIL_SMTP_USER', ''));
+        $this->SMTPPass = env('email.SMTPPass', env('EMAIL_SMTP_PASS', ''));
+        $this->SMTPPort = (int) env('email.SMTPPort', env('EMAIL_SMTP_PORT', 587));
+        $this->SMTPCrypto = env('email.SMTPCrypto', env('EMAIL_SMTP_CRYPTO', 'tls'));
+        $this->mailType = env('email.mailType', 'html');
+        $this->charset = env('email.charset', 'UTF-8');
+        $this->wordWrap = (bool) env('email.wordWrap', true);
 
-        // Development mode - use file driver for testing
+        // Fix untuk Hostinger SMTP
+        if ($this->SMTPHost === 'smtp.hostinger.com') {
+            $this->SMTPCrypto = 'ssl';  // Gunakan SSL bukan TLS untuk Hostinger
+            $this->SMTPPort = 465;      // Port SSL untuk Hostinger
+        }
+
+        // Development mode fallback
         if (ENVIRONMENT === 'development') {
-            $this->protocol = env('EMAIL_PROTOCOL', 'mail');
-
-            // Log emails instead of sending them in development
-            if (env('EMAIL_LOG_ONLY', true)) {
-                $this->protocol = 'mail'; // Keep simple for development
+            if (empty($this->SMTPHost)) {
+                $this->protocol = 'mail';
             }
         }
     }

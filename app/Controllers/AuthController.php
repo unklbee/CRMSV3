@@ -455,7 +455,7 @@ class AuthController extends Controller
     /**
      * Reset password page
      */
-    public function resetPassword(string $token): RedirectResponse
+    public function resetPassword(string $token): string|RedirectResponse
     {
         $passwordResetModel = new PasswordResetModel();
 
