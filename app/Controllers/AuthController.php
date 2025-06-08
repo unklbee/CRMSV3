@@ -8,7 +8,8 @@ use App\Libraries\RateLimiter;
 use CodeIgniter\Controller;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
-use Config\Services;
+use App\Models\PasswordResetModel;
+use App\Libraries\EmailService;
 
 class AuthController extends Controller
 {
@@ -350,13 +351,39 @@ class AuthController extends Controller
     }
 
     /**
+     * Get email service based on environment
+     */
+    private function getEmailService(): EmailService
+    {
+        return new EmailService();
+    }
+
+    /**
      * Process forgot password
+     */
+    /**
+     * Process forgot password - Updated with email factory
      */
     public function processForgotPassword(): ResponseInterface
     {
+        $clientIP = $this->request->getIPAddress();
+        $rateLimitKey = 'forgot_password_' . $clientIP;
+
+        // Rate limiting untuk forgot password (3 attempts per hour)
+        if (!$this->rateLimiter->check($rateLimitKey, 3, 3600)) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Too many password reset attempts. Please try again later.',
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash()
+            ])->setStatusCode(429);
+        }
+
         $rules = UserValidation::getForgotPasswordRules();
 
         if (!$this->validate($rules)) {
+            $this->rateLimiter->attempt($rateLimitKey, 3, 3600);
+
             return $this->response->setJSON([
                 'success' => false,
                 'message' => 'Validation failed',
@@ -367,39 +394,85 @@ class AuthController extends Controller
         }
 
         $email = $this->request->getPost('email');
-        $user = $this->userModel->findByEmail($email);
 
-        if ($user) {
-            // Generate reset token
-            $token = bin2hex(random_bytes(32));
+        try {
+            // Check if user exists
+            $user = $this->userModel->findByEmail($email);
 
-            // Save token to database (you'll need to add this field)
-            // $this->userModel->saveResetToken($user['id'], $token);
+            if ($user) {
+                $passwordResetModel = new PasswordResetModel();
 
-            // Send email (implement email service)
-            // $this->sendResetEmail($email, $token);
+                // Check for recent reset requests
+                if ($passwordResetModel->hasRecentRequest($email, 5)) {
+                    return $this->response->setJSON([
+                        'success' => false,
+                        'message' => 'A password reset link was recently sent. Please check your email or wait 5 minutes.',
+                        'csrf_token' => csrf_token(),
+                        'csrf_hash' => csrf_hash()
+                    ]);
+                }
 
-            log_message('info', "Password reset requested for: {$email}");
+                // Generate reset token
+                $token = $passwordResetModel->createToken($email);
+
+                if ($token) {
+                    // Send reset email using appropriate service
+                    $emailService = $this->getEmailService();
+                    $emailSent = $emailService->sendPasswordResetEmail($email, $token, $user['first_name']);
+
+                    if (!$emailSent && ENVIRONMENT !== 'development') {
+                        log_message('error', "Failed to send password reset email to: {$email}");
+                    }
+
+                    log_message('info', "Password reset requested for: {$email} from IP: {$clientIP}");
+                }
+            }
+
+            // Different messages for development vs production
+            $message = ENVIRONMENT === 'development'
+                ? 'Password reset email has been logged. Check writable/emails/ folder for the email content.'
+                : 'If the email address exists in our system, a password reset link has been sent.';
+
+            return $this->response->setJSON([
+                'success' => true,
+                'message' => $message,
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash()
+            ]);
+
+        } catch (\Exception $e) {
+            log_message('error', 'Password reset error: ' . $e->getMessage());
+
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'An error occurred. Please try again later.',
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash()
+            ]);
         }
-
-        // Always return success untuk security
-        return $this->response->setJSON([
-            'success' => true,
-            'message' => 'If the email exists, a reset link has been sent.',
-            'csrf_token' => csrf_token(),
-            'csrf_hash' => csrf_hash()
-        ]);
     }
 
     /**
      * Reset password page
      */
-    public function resetPassword(string $token): string
+    public function resetPassword(string $token): RedirectResponse
     {
+        $passwordResetModel = new PasswordResetModel();
+
+        // Verify token exists and is valid
+        $resetData = $passwordResetModel->verifyToken($token);
+
+        if (!$resetData) {
+            // Token invalid or expired
+            return redirect()->to('/auth/forgot-password')
+                ->with('error', 'Invalid or expired reset token. Please request a new one.');
+        }
+
         $data = [
             'title' => 'Reset Password',
             'token' => $token
         ];
+
         return view('auth/reset_password', $data);
     }
 
@@ -420,15 +493,68 @@ class AuthController extends Controller
             ]);
         }
 
-        // Implement token verification and password reset
-        // This requires additional database fields and logic
+        $token = $this->request->getPost('token');
+        $password = $this->request->getPost('password');
 
-        return $this->response->setJSON([
-            'success' => true,
-            'message' => 'Password has been reset successfully.',
-            'redirect' => '/auth/signin',
-            'csrf_token' => csrf_token(),
-            'csrf_hash' => csrf_hash()
-        ]);
+        try {
+            $passwordResetModel = new PasswordResetModel();
+
+            // Verify token
+            $resetData = $passwordResetModel->verifyToken($token);
+
+            if (!$resetData) {
+                return $this->response->setJSON([
+                    'success' => false,
+                    'message' => 'Invalid or expired reset token.',
+                    'csrf_token' => csrf_token(),
+                    'csrf_hash' => csrf_hash()
+                ]);
+            }
+
+            // Find user by email
+            $user = $this->userModel->findByEmail($resetData['email']);
+
+            if (!$user) {
+                return $this->response->setJSON([
+                    'success' => false,
+                    'message' => 'User not found.',
+                    'csrf_token' => csrf_token(),
+                    'csrf_hash' => csrf_hash()
+                ]);
+            }
+
+            // Update password
+            $updateData = [
+                'password' => password_hash($password, PASSWORD_ARGON2ID)
+            ];
+
+            if ($this->userModel->update($user['id'], $updateData)) {
+                // Mark token as used
+                $passwordResetModel->markTokenAsUsed($token);
+
+                // Log password reset
+                log_message('info', "Password reset completed for user: {$user['username']}");
+
+                return $this->response->setJSON([
+                    'success' => true,
+                    'message' => 'Password has been reset successfully. You can now login with your new password.',
+                    'redirect' => '/auth/signin',
+                    'csrf_token' => csrf_token(),
+                    'csrf_hash' => csrf_hash()
+                ]);
+            } else {
+                throw new \RuntimeException('Failed to update password');
+            }
+
+        } catch (\Exception $e) {
+            log_message('error', 'Password reset processing error: ' . $e->getMessage());
+
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'An error occurred while resetting your password. Please try again.',
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash()
+            ]);
+        }
     }
 }

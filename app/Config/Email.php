@@ -1,5 +1,7 @@
 <?php
 
+// Update app/Config/Email.php
+
 namespace Config;
 
 use CodeIgniter\Config\BaseConfig;
@@ -77,7 +79,7 @@ class Email extends BaseConfig
     /**
      * Type of mail, either 'text' or 'html'
      */
-    public string $mailType = 'text';
+    public string $mailType = 'html';
 
     /**
      * Character set (utf-8, iso-8859-1, etc.)
@@ -95,12 +97,12 @@ class Email extends BaseConfig
     public int $priority = 3;
 
     /**
-     * Newline character. (Use “\r\n” to comply with RFC 822)
+     * Newline character. (Use "\r\n" to comply with RFC 822)
      */
     public string $CRLF = "\r\n";
 
     /**
-     * Newline character. (Use “\r\n” to comply with RFC 822)
+     * Newline character. (Use "\r\n" to comply with RFC 822)
      */
     public string $newline = "\r\n";
 
@@ -118,4 +120,29 @@ class Email extends BaseConfig
      * Enable notify message from server
      */
     public bool $DSN = false;
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Load from environment variables
+        $this->fromEmail = env('EMAIL_FROM_ADDRESS', 'noreply@yourapp.com');
+        $this->fromName = env('EMAIL_FROM_NAME', 'Your App Name');
+        $this->protocol = env('EMAIL_PROTOCOL', 'mail');
+        $this->SMTPHost = env('EMAIL_SMTP_HOST', '');
+        $this->SMTPUser = env('EMAIL_SMTP_USER', '');
+        $this->SMTPPass = env('EMAIL_SMTP_PASS', '');
+        $this->SMTPPort = (int) env('EMAIL_SMTP_PORT', 587);
+        $this->SMTPCrypto = env('EMAIL_SMTP_CRYPTO', 'tls');
+
+        // Development mode - use file driver for testing
+        if (ENVIRONMENT === 'development') {
+            $this->protocol = env('EMAIL_PROTOCOL', 'mail');
+
+            // Log emails instead of sending them in development
+            if (env('EMAIL_LOG_ONLY', true)) {
+                $this->protocol = 'mail'; // Keep simple for development
+            }
+        }
+    }
 }

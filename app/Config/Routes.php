@@ -18,6 +18,15 @@ $routes->group('auth', [
     $routes->get('signin', 'AuthController::signin');
     $routes->post('processLogin', 'AuthController::processLogin', ['filter' => 'security']);
 
+    // Password recovery routes
+    $routes->get('forgot-password', 'AuthController::forgotPassword');
+    $routes->post('processForgotPassword', 'AuthController::processForgotPassword', ['filter' => 'security']);
+    $routes->get('reset-password/(:segment)', 'AuthController::resetPassword/$1');
+    $routes->post('processResetPassword', 'AuthController::processResetPassword', ['filter' => 'security']);
+
+    // CSRF token refresh untuk AJAX
+    $routes->get('csrf-token', 'AuthController::getCsrfToken');
+
     // Registration routes
     $routes->get('signup', 'AuthController::signup');
     $routes->post('processRegister', 'AuthController::processRegister', ['filter' => 'security']);
@@ -39,6 +48,8 @@ $routes->get('auth/logout', 'AuthController::logout', ['filter' => 'auth']);
 $routes->get('login', 'AuthController::signin', ['filter' => 'guest']);
 $routes->get('register', 'AuthController::signup', ['filter' => 'guest']);
 $routes->get('logout', 'AuthController::logout', ['filter' => 'auth']);
+$routes->get('forgot-password', 'AuthController::forgotPassword', ['filter' => 'guest']);
+$routes->get('reset-password/(:segment)', 'AuthController::resetPassword/$1', ['filter' => 'guest']);
 
 // Dashboard route dengan session check
 $routes->get('dashboard', 'DashboardController::index', ['filter' => 'auth']);
