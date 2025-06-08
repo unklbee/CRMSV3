@@ -24,9 +24,9 @@ class AuthController extends Controller
             'lockout_time' => 1800 // 30 minutes
         ],
         'register' => [
-            'max_attempts' => 3,
-            'time_window' => 600, // 10 minutes
-            'lockout_time' => 1800 // 30 minutes
+            'max_attempts' => 300,
+            'time_window' => 30, // 10 minutes (600)
+            'lockout_time' => 20 // 30 minutes (1800)
         ]
     ];
 
@@ -288,11 +288,30 @@ class AuthController extends Controller
                 // Clear rate limiting on successful registration
                 $this->rateLimiter->clear($rateLimitKey);
 
+                // ADD THIS: Send welcome email
+                try {
+                    $emailService = $this->getEmailService();
+                    $emailSent = $emailService->sendWelcomeEmail(
+                        $userData['email'],
+                        $userData['first_name'],
+                        $userData['username']
+                    );
+
+                    if ($emailSent) {
+                        log_message('info', "Welcome email sent to: {$userData['email']}");
+                    } else {
+                        log_message('warning', "Failed to send welcome email to: {$userData['email']}");
+                    }
+                } catch (\Exception $e) {
+                    log_message('error', 'Welcome email error: ' . $e->getMessage());
+                    // Don't fail registration if email fails
+                }
+
                 log_message('info', "New user registered: {$userData['username']} from IP: {$clientIP}");
 
                 return $this->response->setJSON([
                     'success' => true,
-                    'message' => 'Registration successful! Please login.',
+                    'message' => 'Registration successful! A welcome email has been sent. Please login.',
                     'redirect' => '/auth/signin',
                     'csrf_token' => csrf_token(),
                     'csrf_hash' => csrf_hash()
@@ -403,7 +422,7 @@ class AuthController extends Controller
                 $passwordResetModel = new PasswordResetModel();
 
                 // Check for recent reset requests
-                if ($passwordResetModel->hasRecentRequest($email, 1)) {
+                if ($passwordResetModel->hasRecentRequest($email, 5)) {
                     return $this->response->setJSON([
                         'success' => false,
                         'message' => 'A password reset link was recently sent. Please check your email or wait 5 minutes.',
