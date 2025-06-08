@@ -5,7 +5,32 @@ namespace App\Validation;
 class UserValidation
 {
     /**
-     * Validation rules untuk registrasi user baru
+     * Simplified validation rules untuk login (efisiensi)
+     */
+    public static function getLoginRules(): array
+    {
+        return [
+            'identifier' => [
+                'label' => 'Username/Email',
+                'rules' => 'required|min_length[3]|max_length[100]',
+                'errors' => [
+                    'required' => 'Username or Email is required',
+                    'min_length' => 'Username/Email is too short',
+                    'max_length' => 'Username/Email is too long'
+                ]
+            ],
+            'password' => [
+                'label' => 'Password',
+                'rules' => 'required',
+                'errors' => [
+                    'required' => 'Password is required'
+                ]
+            ]
+        ];
+    }
+
+    /**
+     * Comprehensive validation rules untuk registrasi
      */
     public static function getRegistrationRules(): array
     {
@@ -73,34 +98,7 @@ class UserValidation
     }
 
     /**
-     * Validation rules untuk login
-     */
-    public static function getLoginRules(): array
-    {
-        return [
-            'identifier' => [
-                'label' => 'Username/Email',
-                'rules' => 'required|min_length[3]|max_length[100]',
-                'errors' => [
-                    'required' => 'Username or Email is required',
-                    'min_length' => 'Username/Email must be at least 3 characters',
-                    'max_length' => 'Username/Email cannot exceed 100 characters'
-                ]
-            ],
-            'password' => [
-                'label' => 'Password',
-                'rules' => 'required|min_length[1]|max_length[255]',
-                'errors' => [
-                    'required' => 'Password is required',
-                    'min_length' => 'Password is required',
-                    'max_length' => 'Password is too long'
-                ]
-            ]
-        ];
-    }
-
-    /**
-     * Validation rules untuk update profile
+     * Optimized validation rules untuk update profile
      */
     public static function getUpdateProfileRules(int $userId): array
     {
@@ -150,27 +148,25 @@ class UserValidation
     }
 
     /**
-     * Validation rules untuk change password
+     * Simplified change password validation
      */
     public static function getChangePasswordRules(): array
     {
         return [
             'current_password' => [
                 'label' => 'Current Password',
-                'rules' => 'required|min_length[1]',
+                'rules' => 'required',
                 'errors' => [
-                    'required' => 'Current password is required',
-                    'min_length' => 'Current password is required'
+                    'required' => 'Current password is required'
                 ]
             ],
             'new_password' => [
                 'label' => 'New Password',
-                'rules' => 'required|min_length[8]|max_length[255]|regex_match[/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/]|differs[current_password]',
+                'rules' => 'required|min_length[8]|max_length[255]|differs[current_password]',
                 'errors' => [
                     'required' => 'New password is required',
                     'min_length' => 'New password must be at least 8 characters',
                     'max_length' => 'New password cannot exceed 255 characters',
-                    'regex_match' => 'New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
                     'differs' => 'New password must be different from current password'
                 ]
             ],
@@ -186,7 +182,18 @@ class UserValidation
     }
 
     /**
-     * Validation rules untuk forgot password
+     * Quick validation untuk API endpoints
+     */
+    public static function getQuickLoginRules(): array
+    {
+        return [
+            'identifier' => 'required|max_length[100]',
+            'password' => 'required|max_length[255]'
+        ];
+    }
+
+    /**
+     * Validation untuk forgot password
      */
     public static function getForgotPasswordRules(): array
     {
@@ -204,7 +211,7 @@ class UserValidation
     }
 
     /**
-     * Validation rules untuk reset password
+     * Validation untuk reset password
      */
     public static function getResetPasswordRules(): array
     {
@@ -220,12 +227,11 @@ class UserValidation
             ],
             'password' => [
                 'label' => 'New Password',
-                'rules' => 'required|min_length[8]|max_length[255]|regex_match[/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/]',
+                'rules' => 'required|min_length[8]|max_length[255]',
                 'errors' => [
                     'required' => 'Password is required',
                     'min_length' => 'Password must be at least 8 characters',
-                    'max_length' => 'Password cannot exceed 255 characters',
-                    'regex_match' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+                    'max_length' => 'Password cannot exceed 255 characters'
                 ]
             ],
             'password_confirm' => [
@@ -240,30 +246,49 @@ class UserValidation
     }
 
     /**
-     * Get validation rules for admin creating user
+     * Admin user creation rules
      */
     public static function getAdminCreateUserRules(): array
     {
-        return array_merge(
-            static::getRegistrationRules(),
-            [
-                'role' => [
-                    'label' => 'Role',
-                    'rules' => 'required|in_list[admin,user,moderator]',
-                    'errors' => [
-                        'required' => 'Role is required',
-                        'in_list' => 'Invalid role selected'
-                    ]
-                ],
-                'is_active' => [
-                    'label' => 'Status',
-                    'rules' => 'required|in_list[0,1]',
-                    'errors' => [
-                        'required' => 'Status is required',
-                        'in_list' => 'Invalid status'
-                    ]
+        $rules = static::getRegistrationRules();
+
+        // Add admin-specific fields
+        $rules['role'] = [
+            'label' => 'Role',
+            'rules' => 'required|in_list[admin,technician,customer]',
+            'errors' => [
+                'required' => 'Role is required',
+                'in_list' => 'Invalid role selected'
+            ]
+        ];
+
+        $rules['is_active'] = [
+            'label' => 'Status',
+            'rules' => 'required|in_list[0,1]',
+            'errors' => [
+                'required' => 'Status is required',
+                'in_list' => 'Invalid status'
+            ]
+        ];
+
+        return $rules;
+    }
+
+    /**
+     * Bulk validation untuk import users
+     */
+    public static function getBulkImportRules(): array
+    {
+        return [
+            'file' => [
+                'label' => 'Import File',
+                'rules' => 'uploaded[file]|ext_in[file,csv,xlsx]|max_size[file,2048]',
+                'errors' => [
+                    'uploaded' => 'Please select a file to upload',
+                    'ext_in' => 'File must be CSV or Excel format',
+                    'max_size' => 'File size cannot exceed 2MB'
                 ]
             ]
-        );
+        ];
     }
 }

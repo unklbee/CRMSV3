@@ -32,13 +32,13 @@ class Database extends Config
         'database'     => '',
         'DBDriver'     => 'MySQLi',
         'DBPrefix'     => '',
-        'pConnect'     => false,
+        'pConnect'     => true,
         'DBDebug'      => true,
         'charset'      => 'utf8mb4',
-        'DBCollat'     => 'utf8mb4_general_ci',
+        'DBCollat'     => 'utf8mb4_unicode_ci',
         'swapPre'      => '',
         'encrypt'      => false,
-        'compress'     => false,
+        'compress'     => true,
         'strictOn'     => false,
         'failover'     => [],
         'port'         => 3306,
@@ -49,6 +49,29 @@ class Database extends Config
             'datetime' => 'Y-m-d H:i:s',
             'time'     => 'H:i:s',
         ],
+        // Optimisasi tambahan
+        'MySQLi' => [
+            'MYSQLI_OPT_CONNECT_TIMEOUT' => 5,
+            'MYSQLI_OPT_READ_TIMEOUT' => 5,
+            'MYSQLI_READ_DEFAULT_GROUP' => 'max_connections=1000',
+            'MYSQLI_OPT_NET_CMD_BUFFER_SIZE' => 16384,
+            'MYSQLI_OPT_NET_READ_BUFFER_SIZE' => 32768,
+        ]
+    ];
+
+    /**
+     * Redis cache database untuk session dan caching
+     */
+    public array $redis = [
+        'DSN'      => '',
+        'hostname' => '127.0.0.1',
+        'username' => '',
+        'password' => '',
+        'database' => 'redis',
+        'DBDriver' => 'Redis',
+        'port'     => 6379,
+        'timeout'  => 0,
+        'database' => 0,
     ];
 
     //    /**

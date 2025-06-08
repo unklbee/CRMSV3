@@ -1,0 +1,179 @@
+<?php
+
+namespace App\Libraries;
+
+use CodeIgniter\Cache\CacheInterface;
+use Config\Services;
+
+/**
+ * Simple Rate Limiter untuk CodeIgniter 4
+ * Menggunakan cache untuk tracking attempts
+ */
+class RateLimiter
+{
+    protected CacheInterface $cache;
+
+    public function __construct()
+    {
+        $this->cache = Services::cache();
+    }
+
+    /**
+     * Check apakah request diizinkan berdasarkan rate limit
+     *
+     * @param string $key Unique identifier (biasanya IP + action)
+     * @param int $maxAttempts Maximum attempts allowed
+     * @param int $timeWindow Time window dalam detik
+     * @return bool true jika diizinkan, false jika exceeded
+     */
+    public function attempt(string $key, int $maxAttempts, int $timeWindow): bool
+    {
+        $cacheKey = 'rate_limit_' . $key;
+        $attempts = $this->cache->get($cacheKey, 0);
+
+        if ($attempts >= $maxAttempts) {
+            return false;
+        }
+
+        // Increment counter
+        $this->cache->save($cacheKey, $attempts + 1, $timeWindow);
+
+        return true;
+    }
+
+    /**
+     * Check remaining attempts tanpa increment
+     */
+    public function check(string $key, int $maxAttempts, int $timeWindow): bool
+    {
+        $cacheKey = 'rate_limit_' . $key;
+        $attempts = $this->cache->get($cacheKey, 0);
+
+        return $attempts < $maxAttempts;
+    }
+
+    /**
+     * Get jumlah attempts saat ini
+     */
+    public function getAttempts(string $key): int
+    {
+        $cacheKey = 'rate_limit_' . $key;
+        return $this->cache->get($cacheKey, 0);
+    }
+
+    /**
+     * Get remaining attempts
+     */
+    public function getRemainingAttempts(string $key, int $maxAttempts): int
+    {
+        $attempts = $this->getAttempts($key);
+        return max(0, $maxAttempts - $attempts);
+    }
+
+    /**
+     * Clear rate limit untuk key tertentu
+     */
+    public function clear(string $key): bool
+    {
+        $cacheKey = 'rate_limit_' . $key;
+        return $this->cache->delete($cacheKey);
+    }
+
+    /**
+     * Check apakah IP sedang dalam lockout
+     */
+    public function isLockedOut(string $key): bool
+    {
+        $lockKey = 'lockout_' . $key;
+        return $this->cache->get($lockKey, false) !== false;
+    }
+
+    /**
+     * Set lockout untuk key tertentu
+     */
+    public function setLockout(string $key, int $duration): bool
+    {
+        $lockKey = 'lockout_' . $key;
+        return $this->cache->save($lockKey, time(), $duration);
+    }
+
+    /**
+     * Get lockout remaining time dalam detik
+     */
+    public function getLockoutTime(string $key): int
+    {
+        $lockKey = 'lockout_' . $key;
+        $lockTime = $this->cache->get($lockKey, false);
+
+        if ($lockTime === false) {
+            return 0;
+        }
+
+        // Cache TTL tidak tersedia di semua driver, jadi kita simpan timestamp
+        $remaining = $lockTime + $this->cache->getCacheInfo()[$lockKey]['ttl'] ?? 0 - time();
+        return max(0, $remaining);
+    }
+
+    /**
+     * Clear lockout
+     */
+    public function clearLockout(string $key): bool
+    {
+        $lockKey = 'lockout_' . $key;
+        return $this->cache->delete($lockKey);
+    }
+
+    /**
+     * Advanced rate limiting dengan sliding window
+     */
+    public function slidingWindow(string $key, int $maxAttempts, int $timeWindow): bool
+    {
+        $now = time();
+        $windowKey = 'sliding_' . $key;
+
+        // Get existing timestamps
+        $timestamps = $this->cache->get($windowKey, []);
+
+        // Remove old timestamps outside window
+        $timestamps = array_filter($timestamps, function($timestamp) use ($now, $timeWindow) {
+            return ($now - $timestamp) < $timeWindow;
+        });
+
+        // Check if we're within limit
+        if (count($timestamps) >= $maxAttempts) {
+            return false;
+        }
+
+        // Add current timestamp
+        $timestamps[] = $now;
+
+        // Save updated timestamps
+        $this->cache->save($windowKey, $timestamps, $timeWindow);
+
+        return true;
+    }
+
+    /**
+     * Get statistics untuk monitoring
+     */
+    public function getStats(string $keyPattern = null): array
+    {
+        // This would need cache driver specific implementation
+        // For now, return basic info
+        return [
+            'total_keys' => 0,
+            'active_limits' => 0,
+            'active_lockouts' => 0
+        ];
+    }
+
+    /**
+     * Cleanup expired entries (untuk maintenance)
+     */
+    public function cleanup(): int
+    {
+        // Most cache drivers handle TTL automatically
+        // Return 0 for compatibility
+        return 0;
+    }
+}

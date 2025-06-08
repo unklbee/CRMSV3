@@ -4,6 +4,7 @@ namespace Config;
 
 use App\Filters\AuthFilter;
 use App\Filters\GuestFilter;
+use App\Filters\SecurityMiddleware;
 use CodeIgniter\Config\Filters as BaseFilters;
 use CodeIgniter\Filters\Cors;
 use CodeIgniter\Filters\CSRF;
@@ -38,6 +39,7 @@ class Filters extends BaseFilters
         'performance'   => PerformanceMetrics::class,
         'auth'          => AuthFilter::class,
         'guest'         => GuestFilter::class,
+        'security'      => SecurityMiddleware::class
     ];
 
     /**
@@ -74,11 +76,18 @@ class Filters extends BaseFilters
     public array $globals = [
         'before' => [
             'honeypot',
-            'csrf' => ['except' => ['api/*']],
+            'csrf' => [
+                'except' => [
+                    'api/*',
+                    'health',
+                    '.well-known/*'
+                ]
+            ],
             'invalidchars',
         ],
         'after' => [
             'toolbar',
+            'secureheaders'
         ],
     ];
 
@@ -110,15 +119,35 @@ class Filters extends BaseFilters
         'auth' => [
             'before' => [
                 'dashboard',
+                'dashboard/*',
+                'profile',
                 'profile/*',
-                'admin/*'
+                'admin',
+                'admin/*',
+                'technician',
+                'technician/*'
             ]
         ],
         'guest' => [
             'before' => [
-                'auth/*',
+                'auth/signin',
+                'auth/signup',
+                'auth/processLogin',
+                'auth/processRegister',
+                'auth/forgot-password',
+                'auth/reset-password/*',
                 'login',
                 'register'
+            ]
+        ],
+        'security' => [
+            'before' => [
+                'auth/processLogin',
+                'auth/processRegister',
+                'auth/processForgotPassword',
+                'auth/processResetPassword',
+                'admin/*',
+                'api/*'
             ]
         ]
     ];

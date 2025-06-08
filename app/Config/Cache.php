@@ -11,91 +11,46 @@ use CodeIgniter\Cache\Handlers\RedisHandler;
 use CodeIgniter\Cache\Handlers\WincacheHandler;
 use CodeIgniter\Config\BaseConfig;
 
+/**
+ * Cache Configuration yang dioptimasi dan diperbaiki
+ */
 class Cache extends BaseConfig
 {
     /**
-     * --------------------------------------------------------------------------
-     * Primary Handler
-     * --------------------------------------------------------------------------
-     *
-     * The name of the preferred handler that should be used. If for some reason
-     * it is not available, the $backupHandler will be used in its place.
+     * Primary handler - akan di-set di constructor
      */
     public string $handler = 'file';
 
     /**
-     * --------------------------------------------------------------------------
-     * Backup Handler
-     * --------------------------------------------------------------------------
-     *
-     * The name of the handler that will be used in case the first one is
-     * unreachable. Often, 'file' is used here since the filesystem is
-     * always available, though that's not always practical for the app.
+     * Backup handler
      */
     public string $backupHandler = 'dummy';
 
     /**
-     * --------------------------------------------------------------------------
-     * Key Prefix
-     * --------------------------------------------------------------------------
-     *
-     * This string is added to all cache item names to help avoid collisions
-     * if you run multiple applications with the same cache engine.
+     * Key prefix untuk menghindari collision
      */
     public string $prefix = '';
 
     /**
-     * --------------------------------------------------------------------------
-     * Default TTL
-     * --------------------------------------------------------------------------
-     *
-     * The default number of seconds to save items when none is specified.
-     *
-     * WARNING: This is not used by framework handlers where 60 seconds is
-     * hard-coded, but may be useful to projects and modules. This will replace
-     * the hard-coded value in a future release.
+     * Default TTL yang dioptimasi (1 jam)
      */
-    public int $ttl = 60;
+    public int $ttl = 3600;
 
     /**
-     * --------------------------------------------------------------------------
-     * Reserved Characters
-     * --------------------------------------------------------------------------
-     *
-     * A string of reserved characters that will not be allowed in keys or tags.
-     * Strings that violate this restriction will cause handlers to throw.
-     * Default: {}()/\@:
-     *
-     * NOTE: The default set is required for PSR-6 compliance.
+     * Reserved characters
      */
     public string $reservedCharacters = '{}()/\@:';
 
     /**
-     * --------------------------------------------------------------------------
-     * File settings
-     * --------------------------------------------------------------------------
-     *
-     * Your file storage preferences can be specified below, if you are using
-     * the File driver.
-     *
-     * @var array<string, int|string|null>
+     * File cache configuration
      */
     public array $file = [
-        'storePath' => WRITEPATH . 'cache/',
+        'storePath' => '',
         'mode'      => 0640,
     ];
 
     /**
-     * -------------------------------------------------------------------------
-     * Memcached settings
-     * -------------------------------------------------------------------------
-     *
-     * Your Memcached servers can be specified below, if you are using
-     * the Memcached drivers.
-     *
-     * @see https://codeigniter.com/user_guide/libraries/caching.html#memcached
-     *
-     * @var array<string, bool|int|string>
+     * Memcached configuration
      */
     public array $memcached = [
         'host'   => '127.0.0.1',
@@ -105,14 +60,7 @@ class Cache extends BaseConfig
     ];
 
     /**
-     * -------------------------------------------------------------------------
-     * Redis settings
-     * -------------------------------------------------------------------------
-     *
-     * Your Redis server can be specified below, if you are using
-     * the Redis or Predis drivers.
-     *
-     * @var array<string, int|string|null>
+     * Redis configuration
      */
     public array $redis = [
         'host'     => '127.0.0.1',
@@ -123,14 +71,7 @@ class Cache extends BaseConfig
     ];
 
     /**
-     * --------------------------------------------------------------------------
-     * Available Cache Handlers
-     * --------------------------------------------------------------------------
-     *
-     * This is an array of cache engine alias' and class names. Only engines
-     * that are listed here are allowed to be used.
-     *
-     * @var array<string, class-string<CacheInterface>>
+     * Available cache handlers
      */
     public array $validHandlers = [
         'dummy'     => DummyHandler::class,
@@ -142,21 +83,86 @@ class Cache extends BaseConfig
     ];
 
     /**
-     * --------------------------------------------------------------------------
-     * Web Page Caching: Cache Include Query String
-     * --------------------------------------------------------------------------
-     *
-     * Whether to take the URL query string into consideration when generating
-     * output cache files. Valid options are:
-     *
-     *    false = Disabled
-     *    true  = Enabled, take all query parameters into account.
-     *            Please be aware that this may result in numerous cache
-     *            files generated for the same page over and over again.
-     *    ['q'] = Enabled, but only take into account the specified list
-     *            of query parameters.
-     *
-     * @var bool|list<string>
+     * Web page caching configuration
      */
     public $cacheQueryString = false;
+
+    /**
+     * Constructor untuk set dynamic values
+     */
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Set handler berdasarkan environment dan extension yang tersedia
+        if (ENVIRONMENT === 'production') {
+            if (extension_loaded('redis')) {
+                $this->handler = 'redis';
+                $this->redis['database'] = 1; // Database terpisah dari session
+            } elseif (extension_loaded('memcached')) {
+                $this->handler = 'memcached';
+            } else {
+                $this->handler = 'file';
+            }
+        } else {
+            $this->handler = 'file';
+        }
+
+        // Set backup handler
+        $this->backupHandler = 'file';
+
+        // Set prefix yang unik
+        $this->prefix = 'app_cache_' . substr(md5(APPPATH), 0, 8) . '_';
+
+        // Set file storage path
+        $this->file['storePath'] = WRITEPATH . 'cache/';
+    }
+
+    /**
+     * Get cache group configurations
+     */
+    public function getCacheGroups(): array
+    {
+        return [
+            'user_data' => [
+                'handler' => $this->handler,
+                'ttl' => 1800, // 30 menit untuk user data
+                'prefix' => $this->prefix . 'user_'
+            ],
+            'session_data' => [
+                'handler' => $this->handler,
+                'ttl' => 7200, // 2 jam untuk session
+                'prefix' => $this->prefix . 'sess_'
+            ],
+            'login_attempts' => [
+                'handler' => $this->handler,
+                'ttl' => 900, // 15 menit untuk rate limiting
+                'prefix' => $this->prefix . 'login_'
+            ],
+            'view_cache' => [
+                'handler' => 'file',
+                'ttl' => 86400, // 24 jam untuk view cache
+                'prefix' => $this->prefix . 'view_'
+            ],
+            'api_cache' => [
+                'handler' => $this->handler,
+                'ttl' => 300, // 5 menit untuk API cache
+                'prefix' => $this->prefix . 'api_'
+            ]
+        ];
+    }
+
+    /**
+     * Get optimized Redis configuration
+     */
+    public function getOptimizedRedisConfig(): array
+    {
+        return array_merge($this->redis, [
+            'serializer' => 'php', // Better performance than default
+            'compression' => 'lz4', // Enable compression if available
+            'persistent' => true,   // Persistent connections
+            'retry_interval' => 100,
+            'read_timeout' => 2,
+        ]);
+    }
 }
