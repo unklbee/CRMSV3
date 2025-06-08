@@ -242,6 +242,9 @@ class AuthController extends Controller
     /**
      * Process registration dengan rate limiting
      */
+    /**
+     * Process registration dengan rate limiting dan welcome email
+     */
     public function processRegister(): ResponseInterface
     {
         $clientIP = $this->request->getIPAddress();
@@ -278,7 +281,8 @@ class AuthController extends Controller
             'email' => $this->request->getPost('email'),
             'password' => $this->request->getPost('password'),
             'first_name' => $this->request->getPost('first_name'),
-            'last_name' => $this->request->getPost('last_name')
+            'last_name' => $this->request->getPost('last_name'),
+            'phone' => $this->request->getPost('phone') ?: null
         ];
 
         try {
@@ -288,7 +292,9 @@ class AuthController extends Controller
                 // Clear rate limiting on successful registration
                 $this->rateLimiter->clear($rateLimitKey);
 
-                // ADD THIS: Send welcome email
+                // ========================================
+                // SEND WELCOME EMAIL
+                // ========================================
                 try {
                     $emailService = $this->getEmailService();
                     $emailSent = $emailService->sendWelcomeEmail(
@@ -306,12 +312,18 @@ class AuthController extends Controller
                     log_message('error', 'Welcome email error: ' . $e->getMessage());
                     // Don't fail registration if email fails
                 }
+                // ========================================
 
                 log_message('info', "New user registered: {$userData['username']} from IP: {$clientIP}");
 
+                // Update success message to mention email
+                $message = ENVIRONMENT === 'development'
+                    ? 'Registration successful! Welcome email has been logged to writable/emails/. Please login.'
+                    : 'Registration successful! A welcome email has been sent. Please login.';
+
                 return $this->response->setJSON([
                     'success' => true,
-                    'message' => 'Registration successful! A welcome email has been sent. Please login.',
+                    'message' => $message,
                     'redirect' => '/auth/signin',
                     'csrf_token' => csrf_token(),
                     'csrf_hash' => csrf_hash()
