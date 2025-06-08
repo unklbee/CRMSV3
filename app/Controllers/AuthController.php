@@ -403,7 +403,7 @@ class AuthController extends Controller
                 $passwordResetModel = new PasswordResetModel();
 
                 // Check for recent reset requests
-                if ($passwordResetModel->hasRecentRequest($email, 5)) {
+                if ($passwordResetModel->hasRecentRequest($email, 1)) {
                     return $this->response->setJSON([
                         'success' => false,
                         'message' => 'A password reset link was recently sent. Please check your email or wait 5 minutes.',
