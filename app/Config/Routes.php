@@ -49,9 +49,9 @@ $routes->group('auth', ['filter' => 'guest'], function($routes) {
 
     // Password Recovery
     $routes->get('forgot-password', 'AuthController::forgotPassword');
-    $routes->post('forgot-password', 'AuthController::processForgotPassword');
+    $routes->post('processForgotPassword', 'AuthController::processForgotPassword');
     $routes->get('reset-password/(:segment)', 'AuthController::resetPassword/$1');
-    $routes->post('reset-password', 'AuthController::processResetPassword');
+    $routes->post('processResetPassword', 'AuthController::processResetPassword');
 
     // CSRF Token for AJAX
     $routes->get('csrf-token', 'AuthController::getCsrfToken');

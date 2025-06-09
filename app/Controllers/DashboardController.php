@@ -19,68 +19,126 @@ class DashboardController extends BaseController
 
     /**
      * Main dashboard - redirect berdasarkan role
-     * Admin dan Technician → Unified Dashboard
-     * Customer → Customer Dashboard
      */
-    public function index(): string|\CodeIgniter\HTTP\RedirectResponse
+    public function index()
     {
-        $role = $this->session->get('role');
+        // Debug: Log session data
+        log_message('debug', 'Dashboard access - Session data: ' . json_encode([
+                'isLoggedIn' => $this->session->get('isLoggedIn'),
+                'user_id' => $this->session->get('user_id'),
+                'role_slug' => $this->session->get('role_slug'),
+                'username' => $this->session->get('username')
+            ]));
+
+        $roleSlug = $this->session->get('role_slug');
         $userId = $this->session->get('user_id');
 
-        switch ($role) {
+        if (!$userId || !$roleSlug) {
+            log_message('warning', 'Dashboard access without proper session data');
+            $this->session->destroy();
+            return redirect()->to('/auth/signin')->with('error', 'Session expired. Please login again.');
+        }
+
+        // Role-based dashboard routing
+        switch ($roleSlug) {
             case 'admin':
+                return $this->adminDashboard();
+
+            case 'manager':
+                return $this->adminDashboard(); // Manager uses same dashboard as admin
+
             case 'technician':
-                // Admin dan Technician menggunakan dashboard yang sama
-                return $this->unifiedDashboard();
+                return $this->technicianDashboard();
+
+            case 'support':
+                return $this->technicianDashboard(); // Support uses same dashboard as technician
 
             case 'customer':
-                // Customer memiliki dashboard terpisah
                 return $this->customerDashboard();
 
             default:
+                log_message('error', "Unknown role: {$roleSlug} for user: {$userId}");
                 $this->session->destroy();
-                return redirect()->to('/auth/signin')->with('error', 'Invalid user role. Please login again.');
+                return redirect()->to('/auth/signin')->with('error', 'Invalid user role. Please contact administrator.');
         }
     }
 
     /**
-     * Unified Dashboard untuk Admin dan Technician
+     * Admin Dashboard
      */
-    private function unifiedDashboard(): string
+    public function adminDashboard(): string
     {
         $userId = $this->session->get('user_id');
-        $role = $this->session->get('role');
+        $role = $this->session->get('role_slug');
+        $first_name = $this->session->get('first_name');
+        $email = $this->session->get('email');
 
         $data = [
             'title' => ucfirst($role) . ' Dashboard',
-            'user' => $this->userModel->find($userId),
-            'role' => $role,
-            'stats' => $this->getUnifiedStats($userId, $role),
-            'recent_activities' => $this->getRecentActivities($userId, 10),
-            'notifications' => $this->getNotifications($userId),
-            'charts_data' => $this->getChartsData($role),
-            'quick_actions' => $this->getQuickActions($role),
-            'system_info' => $this->getSystemInfo(),
-            'work_summary' => $this->getWorkSummary($userId, $role)
+            'page_title' => 'Dashboard',
+            'user' => [
+                'id' => $userId,
+                'name' => $this->session->get('full_name'),
+                'role' => $role,
+                'first_name' => $first_name,
+                'email' => $email,
+                'username' => $this->session->get('username')
+            ],
+            'stats' => $this->getAdminStats($userId, $role),
+            'charts' => $this->getAdminCharts(),
+            'recent_activities' => $this->getRecentActivities(),
+            'system_info' => $this->getSystemInfo()
         ];
 
-        return view('dashboard/unified', $data);
+        return view('dashboard/admin', $data);
     }
 
     /**
-     * Customer Dashboard (terpisah)
+     * Technician Dashboard
      */
-    private function customerDashboard(): string
+    public function technicianDashboard(): string
+    {
+        $userId = $this->session->get('user_id');
+        $role = $this->session->get('role_slug');
+
+        $data = [
+            'title' => ucfirst($role) . ' Dashboard',
+            'page_title' => 'Dashboard',
+            'user' => [
+                'id' => $userId,
+                'name' => $this->session->get('full_name'),
+                'role' => $role,
+                'username' => $this->session->get('username')
+            ],
+            'stats' => $this->getTechnicianStats($userId, $role),
+            'assigned_orders' => $this->getAssignedOrders($userId),
+            'work_summary' => $this->getWorkSummary($userId),
+            'upcoming_tasks' => $this->getUpcomingTasks($userId)
+        ];
+
+        return view('dashboard/technician', $data);
+    }
+
+    /**
+     * Customer Dashboard
+     */
+    public function customerDashboard(): string
     {
         $userId = $this->session->get('user_id');
 
         $data = [
             'title' => 'Customer Dashboard',
-            'user' => $this->userModel->find($userId),
+            'page_title' => 'My Dashboard',
+            'user' => [
+                'id' => $userId,
+                'name' => $this->session->get('full_name'),
+                'role' => 'customer',
+                'username' => $this->session->get('username'),
+                'created_at' =>  $this->session->get('created_at')
+            ],
             'stats' => $this->getCustomerStats($userId),
-            'recent_activities' => $this->getRecentActivities($userId, 5),
-            'notifications' => $this->getNotifications($userId),
-            'services' => $this->getCustomerServices($userId),
+            'active_services' => $this->getActiveServices($userId),
+            'recent_orders' => $this->getRecentOrders($userId),
             'support_tickets' => $this->getSupportTickets($userId)
         ];
 
@@ -88,167 +146,23 @@ class DashboardController extends BaseController
     }
 
     /**
-     * Get Unified Stats untuk Admin dan Technician
+     * Get dashboard stats for API
      */
-    private function getUnifiedStats(int $userId, string $role): array
-    {
-        $baseStats = [
-            'users' => $this->getUserStats(),
-            'system' => $this->getSystemStats()
-        ];
-
-        if ($role === 'admin') {
-            // Admin melihat semua statistik sistem
-            $baseStats['admin'] = [
-                'total_users' => $this->userModel->countAll(),
-                'active_users' => $this->userModel->where('is_active', 1)->countAllResults(),
-                'new_users_today' => $this->userModel->where('DATE(created_at)', date('Y-m-d'))->countAllResults(),
-                'new_users_week' => $this->userModel->where('created_at >=', date('Y-m-d', strtotime('-7 days')))->countAllResults(),
-                'security_alerts' => $this->getSecurityAlerts(),
-                'system_health' => $this->getSystemHealth()
-            ];
-        }
-
-        if ($role === 'technician' || $role === 'admin') {
-            // Admin dan Technician melihat work statistics
-            $baseStats['work'] = [
-                'total_orders' => $this->getTotalOrders($userId, $role),
-                'pending_orders' => $this->getPendingOrders($userId, $role),
-                'completed_today' => $this->getCompletedToday($userId, $role),
-                'in_progress' => $this->getInProgressOrders($userId, $role),
-                'overdue_orders' => $this->getOverdueOrders($userId, $role),
-                'completion_rate' => $this->getCompletionRate($userId, $role)
-            ];
-        }
-
-        return $baseStats;
-    }
-
-    /**
-     * Get Customer Stats
-     */
-    private function getCustomerStats(int $userId): array
-    {
-        return [
-            'active_services' => $this->getActiveServices($userId),
-            'support_tickets' => $this->getSupportTicketsCount($userId),
-            'pending_requests' => $this->getPendingRequests($userId),
-            'completed_services' => $this->getCompletedServices($userId)
-        ];
-    }
-
-    /**
-     * Get Charts Data berdasarkan role
-     */
-    private function getChartsData(string $role): array
-    {
-        $baseCharts = [];
-
-        if ($role === 'admin') {
-            $baseCharts['user_registration'] = $this->getUserRegistrationChart();
-            $baseCharts['user_roles'] = $this->getUserRolesChart();
-            $baseCharts['system_performance'] = $this->getSystemPerformanceChart();
-        }
-
-        if ($role === 'technician' || $role === 'admin') {
-            $baseCharts['work_completion'] = $this->getWorkCompletionChart();
-            $baseCharts['order_status'] = $this->getOrderStatusChart();
-        }
-
-        return $baseCharts;
-    }
-
-    /**
-     * Get Quick Actions berdasarkan role
-     */
-    private function getQuickActions(string $role): array
-    {
-        $actions = [];
-
-        if ($role === 'admin') {
-            $actions = [
-                'create_user' => [
-                    'title' => 'Create User',
-                    'icon' => 'fas fa-user-plus',
-                    'url' => '/admin/users/create',
-                    'class' => 'btn-primary'
-                ],
-                'system_backup' => [
-                    'title' => 'System Backup',
-                    'icon' => 'fas fa-download',
-                    'action' => 'backupSystem',
-                    'class' => 'btn-success'
-                ],
-                'clear_cache' => [
-                    'title' => 'Clear Cache',
-                    'icon' => 'fas fa-broom',
-                    'action' => 'clearCache',
-                    'class' => 'btn-warning'
-                ],
-                'view_reports' => [
-                    'title' => 'View Reports',
-                    'icon' => 'fas fa-chart-bar',
-                    'url' => '/admin/reports',
-                    'class' => 'btn-info'
-                ]
-            ];
-        }
-
-        if ($role === 'technician') {
-            $actions = [
-                'view_orders' => [
-                    'title' => 'My Orders',
-                    'icon' => 'fas fa-clipboard-list',
-                    'url' => '/technician/orders',
-                    'class' => 'btn-primary'
-                ],
-                'create_report' => [
-                    'title' => 'Create Report',
-                    'icon' => 'fas fa-file-alt',
-                    'url' => '/technician/reports/create',
-                    'class' => 'btn-success'
-                ],
-                'view_schedule' => [
-                    'title' => 'My Schedule',
-                    'icon' => 'fas fa-calendar-alt',
-                    'url' => '/technician/schedule',
-                    'class' => 'btn-info'
-                ]
-            ];
-        }
-
-        return $actions;
-    }
-
-    /**
-     * Get Work Summary
-     */
-    private function getWorkSummary(int $userId, string $role): array
-    {
-        if ($role === 'customer') {
-            return [];
-        }
-
-        return [
-            'today_tasks' => $this->getTodayTasks($userId, $role),
-            'upcoming_deadlines' => $this->getUpcomingDeadlines($userId, $role),
-            'recent_completions' => $this->getRecentCompletions($userId, $role)
-        ];
-    }
-
-    /**
-     * AJAX Endpoints
-     */
-    public function ajaxStats(): ResponseInterface
+    public function getStats(): ResponseInterface
     {
         if (!$this->request->isAJAX()) {
             return $this->response->setStatusCode(404);
         }
 
-        $role = $this->session->get('role');
         $userId = $this->session->get('user_id');
+        $role = $this->session->get('role_slug');
 
-        $stats = $this->getUnifiedStats($userId, $role);
+        $stats = match($role) {
+            'admin', 'manager' => $this->getAdminStats($userId, $role),
+            'technician', 'support' => $this->getTechnicianStats($userId, $role),
+            'customer' => $this->getCustomerStats($userId),
+            default => []
+        };
 
         return $this->response->setJSON([
             'success' => true,
@@ -256,77 +170,152 @@ class DashboardController extends BaseController
         ]);
     }
 
-    public function quickAction(): ResponseInterface
+    /**
+     * Get chart data for dashboard
+     */
+    public function getChartData(string $chartType): ResponseInterface
     {
         if (!$this->request->isAJAX()) {
             return $this->response->setStatusCode(404);
         }
 
-        $action = $this->request->getPost('action');
-        $role = $this->session->get('role');
+        $userId = $this->session->get('user_id');
+        $role = $this->session->get('role_slug');
 
-        // Hanya admin yang bisa melakukan sistem actions
-        if ($role !== 'admin' && in_array($action, ['clear_cache', 'backup_system'])) {
-            return $this->response->setJSON([
-                'success' => false,
-                'message' => 'Admin access required'
-            ]);
-        }
+        $data = match($chartType) {
+            'user_registration' => $this->getUserRegistrationChart(),
+            'user_roles' => $this->getUserRolesChart(),
+            'order_status' => $this->getOrderStatusChart($userId, $role),
+            'work_completion' => $this->getWorkCompletionChart($userId, $role),
+            'service_requests' => $this->getServiceRequestsChart($userId, $role),
+            default => []
+        };
 
-        switch ($action) {
-            case 'clear_cache':
-                return $this->clearCache();
-            case 'backup_system':
-                return $this->backupSystem();
-            default:
-                return $this->response->setJSON([
-                    'success' => false,
-                    'message' => 'Invalid action'
-                ]);
-        }
+        return $this->response->setJSON([
+            'success' => true,
+            'data' => $data
+        ]);
     }
 
     /**
-     * Helper Methods (implementasi mock data untuk saat ini)
+     * Refresh dashboard data
      */
-    private function getUserStats(): array
+    public function refreshData(): ResponseInterface
     {
+        if (!$this->request->isAJAX()) {
+            return $this->response->setStatusCode(404);
+        }
+
+        // Update last activity
+        $userId = $this->session->get('user_id');
+        if ($userId) {
+            $this->userModel->updateLastActivity($userId);
+        }
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Dashboard data refreshed',
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
+    }
+
+    // ============================================================================
+    // PRIVATE HELPER METHODS
+    // ============================================================================
+
+    /**
+     * Get admin statistics
+     */
+    private function getAdminStats(int $userId, string $role): array
+    {
+        // Mock data - replace with actual database queries
         return [
-            'total' => $this->userModel->countAll(),
-            'active' => $this->userModel->where('is_active', 1)->countAllResults(),
-            'admins' => $this->userModel->where('role', 'admin')->countAllResults(),
-            'technicians' => $this->userModel->where('role', 'technician')->countAllResults(),
-            'customers' => $this->userModel->where('role', 'customer')->countAllResults()
+            'total_users' => $this->userModel->countAllResults(),
+            'active_users' => $this->userModel->where('is_active', 1)->countAllResults(),
+            'total_orders' => $this->getTotalOrders($userId, $role),
+            'pending_orders' => $this->getPendingOrders($userId, $role),
+            'completed_today' => $this->getCompletedToday($userId, $role),
+            'revenue_today' => $this->getRevenueToday(),
+            'system_health' => $this->getSystemHealth(),
+            'security_alerts' => $this->getSecurityAlerts()
         ];
     }
 
-    private function getSystemStats(): array
+    /**
+     * Get technician statistics
+     */
+    private function getTechnicianStats(int $userId, string $role): array
     {
         return [
-            'php_version' => PHP_VERSION,
-            'ci_version' => \CodeIgniter\CodeIgniter::CI_VERSION,
-            'memory_usage' => $this->formatBytes(memory_get_usage(true)),
-            'server_time' => date('Y-m-d H:i:s')
+            'assigned_orders' => $this->getAssignedOrdersCount($userId),
+            'pending_orders' => $this->getPendingOrders($userId, $role),
+            'completed_today' => $this->getCompletedToday($userId, $role),
+            'in_progress' => $this->getInProgressOrders($userId, $role),
+            'overdue_orders' => $this->getOverdueOrders($userId, $role),
+            'completion_rate' => $this->getCompletionRate($userId, $role),
+            'avg_resolution_time' => $this->getAvgResolutionTime($userId),
+            'customer_rating' => $this->getCustomerRating($userId)
         ];
     }
 
-    private function getRecentActivities(int $userId, int $limit): array
+    /**
+     * Get customer statistics
+     */
+    private function getCustomerStats(int $userId): array
     {
-        // Mock data - implement dengan activity logging system
         return [
-            [
-                'user' => $this->session->get('username'),
-                'action' => 'Dashboard accessed',
-                'timestamp' => date('Y-m-d H:i:s'),
-                'type' => 'info'
-            ]
+            'active_services' => $this->getActiveServicesCount($userId),
+            'pending_requests' => $this->getPendingRequests($userId),
+            'completed_services' => $this->getCompletedServices($userId),
+            'support_tickets' => $this->getSupportTicketsCount($userId),
+            'total_spent' => $this->getTotalSpent($userId),
+            'last_service_date' => $this->getLastServiceDate($userId)
         ];
     }
 
-    private function getNotifications(int $userId): array
+    /**
+     * Get admin charts data
+     */
+    private function getAdminCharts(): array
     {
-        // Mock data - implement dengan notification system
-        return [];
+        return [
+            'user_registration' => $this->getUserRegistrationChart(),
+            'user_roles' => $this->getUserRolesChart(),
+            'order_status' => $this->getOrderStatusChart(),
+            'revenue_trend' => $this->getRevenueTrendChart(),
+            'system_performance' => $this->getSystemPerformanceChart()
+        ];
+    }
+
+    // Mock implementations (replace with actual database queries)
+    private function getTotalOrders(int $userId, string $role): int { return rand(100, 500); }
+    private function getPendingOrders(int $userId, string $role): int { return rand(5, 25); }
+    private function getCompletedToday(int $userId, string $role): int { return rand(2, 15); }
+    private function getRevenueToday(): float { return rand(1000, 5000); }
+    private function getSystemHealth(): string { return 'Good'; }
+    private function getSecurityAlerts(): int { return rand(0, 3); }
+
+    private function getAssignedOrdersCount(int $userId): int { return rand(5, 20); }
+    private function getInProgressOrders(int $userId, string $role): int { return rand(3, 12); }
+    private function getOverdueOrders(int $userId, string $role): int { return rand(0, 5); }
+    private function getCompletionRate(int $userId, string $role): float { return round(rand(75, 98) + rand(0, 99)/100, 2); }
+    private function getAvgResolutionTime(int $userId): float { return round(rand(2, 8) + rand(0, 99)/100, 1); }
+    private function getCustomerRating(int $userId): float { return round(rand(4, 5) + rand(0, 99)/100, 1); }
+
+    private function getActiveServicesCount(int $userId): int { return rand(1, 8); }
+    private function getPendingRequests(int $userId): int { return rand(0, 5); }
+    private function getCompletedServices(int $userId): int { return rand(10, 50); }
+    private function getSupportTicketsCount(int $userId): int { return rand(0, 10); }
+    private function getTotalSpent(int $userId): float { return rand(500, 5000); }
+    private function getLastServiceDate(int $userId): string { return date('Y-m-d', strtotime('-' . rand(1, 30) . ' days')); }
+
+    private function getRecentActivities(): array
+    {
+        return [
+            ['action' => 'User login', 'user' => 'admin', 'time' => '2 minutes ago'],
+            ['action' => 'Order completed', 'user' => 'tech1', 'time' => '15 minutes ago'],
+            ['action' => 'New user registered', 'user' => 'customer123', 'time' => '1 hour ago']
+        ];
     }
 
     private function getSystemInfo(): array
@@ -334,32 +323,70 @@ class DashboardController extends BaseController
         return [
             'environment' => ENVIRONMENT,
             'php_version' => PHP_VERSION,
-            'server_software' => $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown'
+            'memory_usage' => round(memory_get_usage(true) / 1024 / 1024, 2) . ' MB',
+            'uptime' => $this->getServerUptime()
         ];
     }
 
-    // Mock implementations untuk work-related methods
-    private function getTotalOrders(int $userId, string $role): int { return rand(50, 200); }
-    private function getPendingOrders(int $userId, string $role): int { return rand(5, 20); }
-    private function getCompletedToday(int $userId, string $role): int { return rand(2, 10); }
-    private function getInProgressOrders(int $userId, string $role): int { return rand(3, 15); }
-    private function getOverdueOrders(int $userId, string $role): int { return rand(0, 5); }
-    private function getCompletionRate(int $userId, string $role): float { return round(rand(75, 95) + rand(0, 99)/100, 2); }
+    private function getAssignedOrders(int $userId): array
+    {
+        // Mock data - replace with actual database query
+        return [
+            ['id' => 1, 'title' => 'Network Setup', 'customer' => 'ABC Corp', 'priority' => 'High', 'due_date' => date('Y-m-d', strtotime('+2 days'))],
+            ['id' => 2, 'title' => 'Server Maintenance', 'customer' => 'XYZ Ltd', 'priority' => 'Medium', 'due_date' => date('Y-m-d', strtotime('+5 days'))]
+        ];
+    }
 
-    // Mock implementations untuk customer methods
-    private function getActiveServices(int $userId): int { return rand(1, 5); }
-    private function getSupportTicketsCount(int $userId): int { return rand(0, 10); }
-    private function getPendingRequests(int $userId): int { return rand(0, 3); }
-    private function getCompletedServices(int $userId): int { return rand(5, 20); }
+    private function getWorkSummary(int $userId): array
+    {
+        return [
+            'today_tasks' => $this->getTodayTasks($userId),
+            'week_progress' => rand(60, 90),
+            'month_completion' => rand(70, 95)
+        ];
+    }
 
-    // Chart methods (return mock data)
+    private function getUpcomingTasks(int $userId): array
+    {
+        return [
+            ['task' => 'Install new software', 'due' => 'Tomorrow', 'priority' => 'High'],
+            ['task' => 'System backup', 'due' => 'This week', 'priority' => 'Medium']
+        ];
+    }
+
+    private function getActiveServices(int $userId): array
+    {
+        return [
+            ['id' => 1, 'service' => 'Web Development', 'status' => 'In Progress', 'progress' => 75],
+            ['id' => 2, 'service' => 'SEO Optimization', 'status' => 'Planning', 'progress' => 25]
+        ];
+    }
+
+    private function getRecentOrders(int $userId): array
+    {
+        return [
+            ['id' => 1, 'service' => 'Website Design', 'status' => 'Completed', 'date' => date('Y-m-d', strtotime('-5 days'))],
+            ['id' => 2, 'service' => 'App Development', 'status' => 'In Progress', 'date' => date('Y-m-d', strtotime('-10 days'))]
+        ];
+    }
+
+    private function getSupportTickets(int $userId): array
+    {
+        return [
+            ['id' => 1, 'subject' => 'Login Issue', 'status' => 'Open', 'priority' => 'High', 'created' => date('Y-m-d H:i', strtotime('-2 hours'))],
+            ['id' => 2, 'subject' => 'Feature Request', 'status' => 'Pending', 'priority' => 'Low', 'created' => date('Y-m-d H:i', strtotime('-1 day'))]
+        ];
+    }
+
     private function getUserRegistrationChart(): array
     {
         $data = [];
         for ($i = 29; $i >= 0; $i--) {
+            $date = date('Y-m-d', strtotime("-$i days"));
+            $count = $this->userModel->where('DATE(created_at)', $date)->countAllResults();
             $data[] = [
-                'date' => date('Y-m-d', strtotime("-$i days")),
-                'count' => rand(0, 5)
+                'date' => $date,
+                'count' => $count ?: rand(0, 5) // Use actual count or mock data
             ];
         }
         return $data;
@@ -367,69 +394,112 @@ class DashboardController extends BaseController
 
     private function getUserRolesChart(): array
     {
+        $roles = $this->userModel
+            ->select('roles.name, roles.slug, COUNT(users.id) as user_count')
+            ->join('roles', 'roles.id = users.role_id', 'left')
+            ->where('users.is_active', 1)
+            ->groupBy('roles.id, roles.name, roles.slug')
+            ->findAll();
+
+        $data = [];
+        foreach ($roles as $role) {
+            $data[$role['slug']] = $role['user_count'];
+        }
+
+        // Add mock data if no actual data
+        if (empty($data)) {
+            $data = [
+                'admin' => rand(1, 5),
+                'technician' => rand(5, 15),
+                'customer' => rand(20, 100)
+            ];
+        }
+
+        return $data;
+    }
+
+    private function getOrderStatusChart(int $userId = null, string $role = null): array
+    {
+        // Mock data - replace with actual database query
         return [
-            'admin' => $this->userModel->where('role', 'admin')->countAllResults(),
-            'technician' => $this->userModel->where('role', 'technician')->countAllResults(),
-            'customer' => $this->userModel->where('role', 'customer')->countAllResults()
+            'pending' => rand(5, 15),
+            'in_progress' => rand(10, 25),
+            'completed' => rand(50, 100),
+            'cancelled' => rand(0, 5)
         ];
     }
 
-    private function getWorkCompletionChart(): array { return []; }
-    private function getOrderStatusChart(): array { return []; }
-    private function getSystemPerformanceChart(): array { return []; }
-
-    // Work summary methods
-    private function getTodayTasks(int $userId, string $role): array { return []; }
-    private function getUpcomingDeadlines(int $userId, string $role): array { return []; }
-    private function getRecentCompletions(int $userId, string $role): array { return []; }
-
-    // Security and system methods
-    private function getSecurityAlerts(): int { return rand(0, 3); }
-    private function getSystemHealth(): string { return 'Good'; }
-
-    // Customer specific methods
-    private function getCustomerServices(int $userId): array { return []; }
-    private function getSupportTickets(int $userId): array { return []; }
-
-    // Utility methods
-    private function formatBytes(int $size, int $precision = 2): string
+    private function getWorkCompletionChart(int $userId = null, string $role = null): array
     {
-        $units = ['B', 'KB', 'MB', 'GB'];
-        for ($i = 0; $size > 1024 && $i < count($units) - 1; $i++) {
-            $size /= 1024;
+        $data = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $date = date('Y-m-d', strtotime("-$i days"));
+            $data[] = [
+                'date' => $date,
+                'completed' => rand(2, 10),
+                'assigned' => rand(5, 15)
+            ];
         }
-        return round($size, $precision) . ' ' . $units[$i];
+        return $data;
     }
 
-    private function clearCache(): ResponseInterface
+    private function getServiceRequestsChart(int $userId = null, string $role = null): array
     {
-        try {
-            cache()->clean();
-            return $this->response->setJSON([
-                'success' => true,
-                'message' => 'Cache cleared successfully'
-            ]);
-        } catch (\Exception $e) {
-            return $this->response->setJSON([
-                'success' => false,
-                'message' => 'Failed to clear cache'
-            ]);
+        $data = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $month = date('Y-m', strtotime("-$i months"));
+            $data[] = [
+                'month' => $month,
+                'requests' => rand(10, 50),
+                'completed' => rand(8, 45)
+            ];
         }
+        return $data;
     }
 
-    private function backupSystem(): ResponseInterface
+    private function getRevenueTrendChart(): array
     {
-        try {
-            // Implement backup logic
-            return $this->response->setJSON([
-                'success' => true,
-                'message' => 'System backup initiated'
-            ]);
-        } catch (\Exception $e) {
-            return $this->response->setJSON([
-                'success' => false,
-                'message' => 'Failed to backup system'
-            ]);
+        $data = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $month = date('Y-m', strtotime("-$i months"));
+            $data[] = [
+                'month' => $month,
+                'revenue' => rand(10000, 50000)
+            ];
         }
+        return $data;
+    }
+
+    private function getSystemPerformanceChart(): array
+    {
+        $data = [];
+        for ($i = 23; $i >= 0; $i--) {
+            $hour = date('H:00', strtotime("-$i hours"));
+            $data[] = [
+                'time' => $hour,
+                'cpu' => rand(20, 80),
+                'memory' => rand(30, 70),
+                'disk' => rand(40, 90)
+            ];
+        }
+        return $data;
+    }
+
+    private function getTodayTasks(int $userId): array
+    {
+        return [
+            'completed' => rand(3, 8),
+            'pending' => rand(1, 5),
+            'total' => rand(5, 12)
+        ];
+    }
+
+    private function getServerUptime(): string
+    {
+        if (function_exists('sys_getloadavg')) {
+            $uptime = shell_exec('uptime');
+            return $uptime ? trim($uptime) : 'Unknown';
+        }
+        return 'Unknown';
     }
 }

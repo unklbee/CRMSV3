@@ -15,7 +15,7 @@ class UserModel extends Model
     protected $allowedFields    = [
         'username', 'email', 'password', 'first_name', 'last_name', 'phone', 'avatar',
         'role_id', 'additional_permissions', 'is_active', 'email_verified_at',
-        'last_login', 'last_activity', 'login_attempts', 'locked_until', 'settings'
+        'last_login', 'last_activity', 'login_attempts', 'locked_until', 'reset_token', 'reset_expires', 'settings'
     ];
 
     protected $useTimestamps = true;
@@ -357,5 +357,99 @@ class UserModel extends Model
             self::$userCache = [];
             self::$permissionCache = [];
         }
+    }
+
+    /**
+     * Set password reset token
+     */
+    public function setResetToken(int $userId, string $token): bool
+    {
+        // Debug log
+        log_message('debug', "setResetToken called with userId: {$userId}, token length: " . strlen($token));
+
+        $data = [
+            'reset_token' => password_hash($token, PASSWORD_DEFAULT),
+            'reset_expires' => date('Y-m-d H:i:s', strtotime('+1 hour')),
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+
+        // Debug log
+        log_message('debug', 'Update data: ' . json_encode($data));
+
+        // Check if user exists first
+        $user = $this->find($userId);
+        if (!$user) {
+            log_message('error', "User not found with ID: {$userId}");
+            return false;
+        }
+
+        log_message('debug', "User found: {$user['username']}");
+
+        try {
+            $result = $this->update($userId, $data);
+            log_message('debug', "Update result: " . ($result ? 'success' : 'failed'));
+            return $result;
+        } catch (\Exception $e) {
+            log_message('error', "setResetToken error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Find user by reset token
+     */
+    public function findByResetToken(string $token): ?array
+    {
+        $users = $this->where('reset_expires >', date('Y-m-d H:i:s'))
+            ->where('reset_token IS NOT NULL')
+            ->where('is_active', 1)
+            ->findAll();
+
+        foreach ($users as $user) {
+            if (password_verify($token, $user['reset_token'])) {
+                return $user;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Clear reset token
+     */
+    public function clearResetToken(int $userId): bool
+    {
+        return $this->update($userId, [
+            'reset_token' => null,
+            'reset_expires' => null
+        ]);
+    }
+
+    /**
+     * Reset password with token
+     */
+    public function resetPassword(string $token, string $newPassword): bool
+    {
+        $user = $this->findByResetToken($token);
+
+        if (!$user) {
+            return false;
+        }
+
+        // Update password and clear reset token
+        $result = $this->update($user['id'], [
+            'password' => password_hash($newPassword, PASSWORD_DEFAULT),
+            'reset_token' => null,
+            'reset_expires' => null,
+            'login_attempts' => 0, // Reset failed login attempts
+            'locked_until' => null // Unlock account if locked
+        ]);
+
+        if ($result) {
+            // Clear user cache
+            $this->clearCache($user['id']);
+        }
+
+        return $result;
     }
 }

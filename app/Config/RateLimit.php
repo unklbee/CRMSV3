@@ -39,11 +39,19 @@ class RateLimit extends BaseConfig
     ];
 
     /**
-     * Password Reset Rate Limiting
+     * Password Reset Request Rate Limiting
      */
     public array $password_reset = [
-        'max_attempts' => 3,      // Maximum attempts
+        'max_attempts' => 5,      // Maximum reset requests
         'time_window' => 3600,    // 1 hour in seconds
+    ];
+
+    /**
+     * Password Reset Process Rate Limiting (when actually resetting with token)
+     */
+    public array $password_reset_process = [
+        'max_attempts' => 5,      // Maximum reset attempts with token
+        'time_window' => 900,     // 15 minutes in seconds
     ];
 
     /**
@@ -51,6 +59,38 @@ class RateLimit extends BaseConfig
      */
     public array $email_verification = [
         'max_attempts' => 5,      // Maximum attempts
+        'time_window' => 3600,    // 1 hour in seconds
+    ];
+
+    /**
+     * Two-Factor Authentication Rate Limiting
+     */
+    public array $two_factor = [
+        'max_attempts' => 5,      // Maximum 2FA attempts
+        'time_window' => 900,     // 15 minutes in seconds
+    ];
+
+    /**
+     * Account Lockout Rate Limiting
+     */
+    public array $account_lockout = [
+        'max_attempts' => 10,     // Maximum failed attempts before lockout
+        'lockout_duration' => 1800, // 30 minutes lockout
+    ];
+
+    /**
+     * Contact Form Rate Limiting
+     */
+    public array $contact_form = [
+        'max_attempts' => 3,      // Maximum contact form submissions
+        'time_window' => 3600,    // 1 hour in seconds
+    ];
+
+    /**
+     * Newsletter Subscription Rate Limiting
+     */
+    public array $newsletter = [
+        'max_attempts' => 5,      // Maximum subscription attempts
         'time_window' => 3600,    // 1 hour in seconds
     ];
 }
