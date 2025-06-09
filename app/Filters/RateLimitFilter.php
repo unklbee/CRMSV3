@@ -31,6 +31,7 @@ class RateLimitFilter implements FilterInterface
             return response()->setStatusCode(429, 'Too Many Requests');
         }
 
+        // Increment the counter after checking
         $rateLimiter->attempt($key, 100, 60);
         return null;
     }

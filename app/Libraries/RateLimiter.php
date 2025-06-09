@@ -19,6 +19,19 @@ class RateLimiter
 
     /**
      * Check apakah request diizinkan berdasarkan rate limit
+     * Method ini yang dipanggil oleh RateLimitFilter
+     */
+    public function isAllowed(string $key, int $maxAttempts, int $timeWindow): bool
+    {
+        $cacheKey = 'rate_limit_' . $key;
+        $attempts = $this->cache->get($cacheKey, 0);
+
+        // Jika sudah mencapai limit, tidak diizinkan
+        return $attempts < $maxAttempts;
+    }
+
+    /**
+     * Check apakah request diizinkan berdasarkan rate limit
      */
     public function attempt(string $key, int $maxAttempts, int $timeWindow): bool
     {

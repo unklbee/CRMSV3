@@ -2,6 +2,7 @@
 
 namespace Config;
 
+use App\Libraries\RateLimiter;
 use CodeIgniter\Config\BaseService;
 
 /**
@@ -29,4 +30,12 @@ class Services extends BaseService
      *     return new \CodeIgniter\Example();
      * }
      */
+    public static function rateLimiter($getShared = true)
+    {
+        if ($getShared) {
+            return static::getSharedInstance('rateLimiter');
+        }
+
+        return new RateLimiter();
+    }
 }
