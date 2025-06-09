@@ -2,7 +2,7 @@
 <html lang="id">
 <!--begin::Head-->
 <head>
-    <title>Dashboard</title>
+    <title><?= $title ?? 'Dashboard' ?></title>
     <meta charset="utf-8"/>
     <meta name="description" content="CRMV3"/>
     <meta name="keywords" content="CRMS"/>

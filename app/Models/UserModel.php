@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use CodeIgniter\Model;
-use ReflectionException;
 
 class UserModel extends Model
 {
@@ -11,334 +10,471 @@ class UserModel extends Model
     protected $primaryKey       = 'id';
     protected $useAutoIncrement = true;
     protected $returnType       = 'array';
-    protected $useSoftDeletes   = false;
+    protected $useSoftDeletes   = true;
     protected $protectFields    = true;
     protected $allowedFields    = [
-        'username', 'email', 'password', 'first_name', 'last_name', 'phone','last_login',
-        'role', 'is_active', 'created_at', 'updated_at'
+        'username', 'email', 'password', 'first_name', 'last_name', 'phone', 'avatar',
+        'role_id', 'additional_permissions', 'is_active', 'email_verified_at',
+        'last_login', 'last_activity', 'login_attempts', 'locked_until', 'settings'
     ];
 
     protected $useTimestamps = true;
     protected $createdField  = 'created_at';
     protected $updatedField  = 'updated_at';
+    protected $deletedField  = 'deleted_at';
 
-    // Cache untuk hasil query yang sering diakses
-    private $userCache = [];
+    protected $validationRules = [
+        'username' => 'required|min_length[3]|max_length[50]|is_unique[users.username,id,{id}]|alpha_numeric',
+        'email' => 'required|valid_email|is_unique[users.email,id,{id}]',
+        'password' => 'required|min_length[8]',
+        'first_name' => 'required|min_length[2]|max_length[100]',
+        'last_name' => 'required|min_length[2]|max_length[100]',
+        'role_id' => 'required|integer|is_not_unique[roles.id]'
+    ];
+
+    protected $validationMessages = [
+        'username' => [
+            'is_unique' => 'Username already exists',
+            'alpha_numeric' => 'Username can only contain letters and numbers'
+        ],
+        'email' => [
+            'is_unique' => 'Email already exists'
+        ],
+        'role_id' => [
+            'is_not_unique' => 'Selected role does not exist'
+        ]
+    ];
+
+    // Cache for user data
+    private static $userCache = [];
+    private static $permissionCache = [];
 
     /**
-     * Optimized: Cari user berdasarkan username atau email dengan caching
-     *
-     * @param string $identifier Username atau email
-     * @return array|null
+     * Find user by username or email with role information
      */
     public function findByUsernameOrEmail(string $identifier): ?array
     {
-        // Check cache first
         $cacheKey = 'user_' . md5($identifier);
 
-        if (isset($this->userCache[$cacheKey])) {
-            return $this->userCache[$cacheKey];
+        if (isset(self::$userCache[$cacheKey])) {
+            return self::$userCache[$cacheKey];
         }
 
-        // Query dengan index yang optimal (pastikan username & email ter-index)
-        $user = $this->select('id, username, email, password, first_name, last_name, role, is_active, last_login')
-            ->where('is_active', 1)
+        $user = $this->select('users.*, roles.slug as role_slug, roles.name as role_name, roles.level as role_level')
+            ->join('roles', 'roles.id = users.role_id', 'left')
             ->groupStart()
-            ->where('username', $identifier)
-            ->orWhere('email', $identifier)
+            ->where('users.username', $identifier)
+            ->orWhere('users.email', $identifier)
             ->groupEnd()
+            ->where('users.is_active', 1)
+            ->where('users.deleted_at', null)
             ->first();
 
-        // Cache result untuk request berikutnya
         if ($user) {
-            $this->userCache[$cacheKey] = $user;
+            // Load user permissions
+            $user['permissions'] = $this->getUserPermissions($user['id']);
+            self::$userCache[$cacheKey] = $user;
         }
 
         return $user;
     }
 
     /**
-     * Simplified: Verifikasi password tanpa update last_login
-     * Last login akan di-update secara async di controller
-     *
-     * @param string $identifier Username atau email
-     * @param string $password Password plain text
-     * @return array|false
+     * Find user with complete role and permission data
      */
-    public function verifyPassword(string $identifier, string $password): bool|array
+    public function findWithRole(int $userId): ?array
     {
-        $user = $this->findByUsernameOrEmail($identifier);
+        $user = $this->select('users.*, roles.slug as role_slug, roles.name as role_name, roles.level as role_level, roles.description as role_description')
+            ->join('roles', 'roles.id = users.role_id', 'left')
+            ->where('users.id', $userId)
+            ->where('users.deleted_at', null)
+            ->first();
 
-        if ($user && password_verify($password, $user['password'])) {
-            return $user;
+        if ($user) {
+            $user['permissions'] = $this->getUserPermissions($userId);
+            $user['role_permissions'] = $this->getRolePermissions($user['role_id']);
+        }
+
+        return $user;
+    }
+
+    /**
+     * Get user permissions (role permissions + additional permissions)
+     */
+    public function getUserPermissions(int $userId): array
+    {
+        $cacheKey = 'user_permissions_' . $userId;
+
+        if (isset(self::$permissionCache[$cacheKey])) {
+            return self::$permissionCache[$cacheKey];
+        }
+
+        $user = $this->find($userId);
+        if (!$user) {
+            return [];
+        }
+
+        // Get role permissions
+        $rolePermissions = $this->getRolePermissions($user['role_id']);
+
+        // Get additional user-specific permissions
+        $additionalPermissions = [];
+        if (!empty($user['additional_permissions'])) {
+            $additionalPermissions = json_decode($user['additional_permissions'], true) ?? [];
+        }
+
+        // Merge permissions (additional permissions can override role permissions)
+        $allPermissions = [];
+
+        // Add role permissions
+        foreach ($rolePermissions as $permission) {
+            $allPermissions[$permission['slug']] = [
+                'slug' => $permission['slug'],
+                'name' => $permission['name'],
+                'module' => $permission['module'],
+                'action' => $permission['action'],
+                'resource' => $permission['resource'],
+                'granted' => (bool)$permission['granted'],
+                'source' => 'role'
+            ];
+        }
+
+        // Override with additional permissions
+        foreach ($additionalPermissions as $slug => $granted) {
+            if (isset($allPermissions[$slug])) {
+                $allPermissions[$slug]['granted'] = (bool)$granted;
+                $allPermissions[$slug]['source'] = 'user';
+            }
+        }
+
+        $permissions = array_values($allPermissions);
+        self::$permissionCache[$cacheKey] = $permissions;
+
+        return $permissions;
+    }
+
+    /**
+     * Get role permissions
+     */
+    private function getRolePermissions(int $roleId): array
+    {
+        $db = \Config\Database::connect();
+
+        return $db->table('role_permissions rp')
+            ->select('p.slug, p.name, p.module, p.action, p.resource, rp.granted')
+            ->join('permissions p', 'p.id = rp.permission_id')
+            ->where('rp.role_id', $roleId)
+            ->where('p.is_active', 1)
+            ->get()
+            ->getResultArray();
+    }
+
+    /**
+     * Check if user has specific permission
+     */
+    public function hasPermission(int $userId, string $permissionSlug): bool
+    {
+        $permissions = $this->getUserPermissions($userId);
+
+        foreach ($permissions as $permission) {
+            if ($permission['slug'] === $permissionSlug) {
+                return $permission['granted'];
+            }
         }
 
         return false;
     }
 
     /**
-     * Legacy method untuk backward compatibility
-     * @deprecated Use verifyPassword instead
+     * Check if user has any of the given permissions
      */
-    public function verifyLogin(string $identifier, string $password): bool|array
+    public function hasAnyPermission(int $userId, array $permissionSlugs): bool
     {
-        return $this->verifyPassword($identifier, $password);
+        foreach ($permissionSlugs as $slug) {
+            if ($this->hasPermission($userId, $slug)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
-     * Optimized: Create new user dengan transaction
+     * Check if user has all given permissions
      */
-    public function createUser(array $data): int|false
+    public function hasAllPermissions(int $userId, array $permissionSlugs): bool
     {
-        $this->db->transStart();
-
-        try {
-            // Validate required fields
-            $requiredFields = ['username', 'email', 'password', 'first_name', 'last_name'];
-            foreach ($requiredFields as $field) {
-                if (empty($data[$field])) {
-                    throw new \InvalidArgumentException("Field {$field} is required");
-                }
-            }
-
-            // Hash password before saving
-            if (isset($data['password'])) {
-                $data['password'] = password_hash($data['password'], PASSWORD_ARGON2ID);
-            }
-
-            // Set default values
-            $data['is_active'] = $data['is_active'] ?? 1;
-            $data['role'] = $data['role'] ?? 'customer';
-
-            $userId = $this->insert($data);
-
-            $this->db->transComplete();
-
-            if ($this->db->transStatus() === false) {
+        foreach ($permissionSlugs as $slug) {
+            if (!$this->hasPermission($userId, $slug)) {
                 return false;
             }
-
-            // Clear cache setelah insert
-            $this->clearUserCache();
-
-            return $userId;
-
-        } catch (\Exception $e) {
-            $this->db->transRollback();
-            log_message('error', 'Error creating user: ' . $e->getMessage());
-            return false;
         }
+
+        return true;
     }
 
     /**
-     * Optimized: Update user dengan validation dan transaction
+     * Get users with role information for admin panel
      */
-    public function updateUser(int $userId, array $data): bool
+    public function getUsersWithRoles(array $filters = [], int $perPage = 10): array
     {
-        $this->db->transStart();
+        $builder = $this->select('users.*, roles.name as role_name, roles.slug as role_slug, roles.level as role_level')
+            ->join('roles', 'roles.id = users.role_id', 'left');
 
-        try {
-            // Hash password if provided
-            if (!empty($data['password'])) {
-                $data['password'] = password_hash($data['password'], PASSWORD_ARGON2ID);
-            } else {
-                // Remove password field if empty
-                unset($data['password']);
-            }
-
-            $result = $this->update($userId, $data);
-
-            $this->db->transComplete();
-
-            if ($this->db->transStatus() === false) {
-                return false;
-            }
-
-            // Clear cache setelah update
-            $this->clearUserCache();
-
-            return $result;
-
-        } catch (\Exception $e) {
-            $this->db->transRollback();
-            log_message('error', 'Error updating user: ' . $e->getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Batch update last login untuk multiple users (untuk optimization)
-     */
-    public function updateLastLogin(int $userId): bool
-    {
-        try {
-            return $this->set('last_login', 'NOW()', false)
-                ->where('id', $userId)
-                ->update();
-        } catch (\Exception $e) {
-            log_message('error', 'Error updating last login: ' . $e->getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Change user password dengan validation
-     * @throws ReflectionException
-     */
-    public function changePassword(int $userId, string $currentPassword, string $newPassword): bool
-    {
-        // Verify current password first
-        $user = $this->find($userId);
-        if (!$user || !password_verify($currentPassword, $user['password'])) {
-            return false;
+        // Apply filters
+        if (!empty($filters['role_id'])) {
+            $builder->where('users.role_id', $filters['role_id']);
         }
 
-        return $this->update($userId, [
-            'password' => password_hash($newPassword, PASSWORD_ARGON2ID)
-        ]);
-    }
-
-    /**
-     * Optimized: Get user by email dengan caching
-     */
-    public function findByEmail(string $email): ?array
-    {
-        $cacheKey = 'user_email_' . md5($email);
-
-        if (isset($this->userCache[$cacheKey])) {
-            return $this->userCache[$cacheKey];
+        if (!empty($filters['is_active'])) {
+            $builder->where('users.is_active', $filters['is_active']);
         }
 
-        $user = $this->where('email', $email)
-            ->where('is_active', 1)
-            ->first();
-
-        if ($user) {
-            $this->userCache[$cacheKey] = $user;
-        }
-
-        return $user;
-    }
-
-    /**
-     * Optimized: Get users dengan pagination, search, dan proper indexing
-     */
-    public function getUsersPaginated(int $perPage = 10, string $search = '', array $filters = []): array
-    {
-        $builder = $this->select('id, username, email, first_name, last_name, role, is_active, last_login, created_at');
-
-        // Search functionality
-        if (!empty($search)) {
+        if (!empty($filters['search'])) {
             $builder->groupStart()
-                ->like('username', $search)
-                ->orLike('email', $search)
-                ->orLike('CONCAT(first_name, " ", last_name)', $search)
+                ->like('users.username', $filters['search'])
+                ->orLike('users.email', $filters['search'])
+                ->orLike('CONCAT(users.first_name, " ", users.last_name)', $filters['search'])
                 ->groupEnd();
         }
 
-        // Additional filters
-        foreach ($filters as $field => $value) {
-            if (in_array($field, $this->allowedFields) && !empty($value)) {
-                $builder->where($field, $value);
-            }
+        if (!empty($filters['role_level'])) {
+            $builder->where('roles.level >=', $filters['role_level']);
         }
 
         return [
-            'data' => $builder->paginate($perPage),
+            'data' => $builder->orderBy('users.created_at', 'DESC')
+                ->paginate($perPage),
             'pager' => $this->pager
         ];
     }
 
     /**
-     * Get user statistics untuk dashboard
+     * Create user with role assignment
+     */
+    public function createWithRole(array $userData, ?array $additionalPermissions = null): int|false
+    {
+        // Hash password if provided
+        if (!empty($userData['password'])) {
+            $userData['password'] = password_hash($userData['password'], PASSWORD_DEFAULT);
+        }
+
+        // Set default role if not provided
+        if (empty($userData['role_id'])) {
+            $roleModel = model('RoleModel');
+            $defaultRole = $roleModel->getDefaultRole();
+            $userData['role_id'] = $defaultRole ? $defaultRole['id'] : null;
+        }
+
+        // Add additional permissions if provided
+        if ($additionalPermissions) {
+            $userData['additional_permissions'] = json_encode($additionalPermissions);
+        }
+
+        $userId = $this->insert($userData);
+
+        if ($userId) {
+            // Clear cache
+            self::clearUserCache();
+        }
+
+        return $userId;
+    }
+
+    /**
+     * Update user role and permissions
+     */
+    public function updateUserRole(int $userId, int $roleId, ?array $additionalPermissions = null): bool
+    {
+        $updateData = ['role_id' => $roleId];
+
+        if ($additionalPermissions !== null) {
+            $updateData['additional_permissions'] = json_encode($additionalPermissions);
+        }
+
+        $result = $this->update($userId, $updateData);
+
+        if ($result) {
+            // Clear cache
+            self::clearUserCache();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Grant additional permission to user
+     */
+    public function grantPermission(int $userId, string $permissionSlug, bool $granted = true): bool
+    {
+        $user = $this->find($userId);
+        if (!$user) {
+            return false;
+        }
+
+        $additionalPermissions = [];
+        if (!empty($user['additional_permissions'])) {
+            $additionalPermissions = json_decode($user['additional_permissions'], true) ?? [];
+        }
+
+        $additionalPermissions[$permissionSlug] = $granted;
+
+        $result = $this->update($userId, [
+            'additional_permissions' => json_encode($additionalPermissions)
+        ]);
+
+        if ($result) {
+            // Clear cache
+            self::clearUserCache();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Remove additional permission from user
+     */
+    public function revokePermission(int $userId, string $permissionSlug): bool
+    {
+        $user = $this->find($userId);
+        if (!$user) {
+            return false;
+        }
+
+        $additionalPermissions = [];
+        if (!empty($user['additional_permissions'])) {
+            $additionalPermissions = json_decode($user['additional_permissions'], true) ?? [];
+        }
+
+        unset($additionalPermissions[$permissionSlug]);
+
+        $result = $this->update($userId, [
+            'additional_permissions' => json_encode($additionalPermissions)
+        ]);
+
+        if ($result) {
+            // Clear cache
+            self::clearUserCache();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get user statistics with role breakdown
      */
     public function getUserStats(): array
     {
+        $db = \Config\Database::connect();
+
+        $roleStats = $db->table('users u')
+            ->select('r.name as role_name, r.slug as role_slug, COUNT(*) as count')
+            ->join('roles r', 'r.id = u.role_id', 'left')
+            ->where('u.deleted_at', null)
+            ->groupBy('u.role_id')
+            ->orderBy('count', 'DESC')
+            ->get()
+            ->getResultArray();
+
         return [
-            'total' => $this->countAll(),
-            'active' => $this->where('is_active', 1)->countAllResults(),
-            'inactive' => $this->where('is_active', 0)->countAllResults(),
-            'admins' => $this->where('role', 'admin')->countAllResults(),
-            'technicians' => $this->where('role', 'technician')->countAllResults(),
-            'customers' => $this->where('role', 'customer')->countAllResults(),
+            'total' => $this->where('deleted_at', null)->countAllResults(),
+            'active' => $this->where('is_active', 1)->where('deleted_at', null)->countAllResults(),
+            'inactive' => $this->where('is_active', 0)->where('deleted_at', null)->countAllResults(),
+            'verified' => $this->where('email_verified_at !=', null)->where('deleted_at', null)->countAllResults(),
+            'locked' => $this->where('locked_until >', date('Y-m-d H:i:s'))->where('deleted_at', null)->countAllResults(),
+            'by_role' => $roleStats,
+            'new_today' => $this->where('DATE(created_at)', date('Y-m-d'))->countAllResults(),
+            'new_week' => $this->where('created_at >=', date('Y-m-d', strtotime('-7 days')))->countAllResults(),
+            'new_month' => $this->where('created_at >=', date('Y-m-d', strtotime('-30 days')))->countAllResults()
         ];
     }
 
     /**
-     * Soft delete user (deactivate) dengan logging
-     * @throws ReflectionException
+     * Update last login timestamp
      */
-    public function deactivateUser(int $userId): bool
+    public function updateLastLogin(int $userId): bool
     {
-        $user = $this->find($userId);
-        if (!$user) {
-            return false;
-        }
-
-        $result = $this->update($userId, ['is_active' => 0]);
-
-        if ($result) {
-            log_message('info', "User deactivated: {$user['username']} (ID: {$userId})");
-            $this->clearUserCache();
-        }
-
-        return $result;
+        return $this->update($userId, [
+            'last_login' => date('Y-m-d H:i:s'),
+            'last_activity' => date('Y-m-d H:i:s'),
+            'login_attempts' => 0,
+            'locked_until' => null
+        ]);
     }
 
     /**
-     * Activate user dengan logging
-     * @throws ReflectionException
+     * Increment login attempts and lock if necessary
      */
-    public function activateUser(int $userId): bool
+    public function incrementLoginAttempts(string $identifier, int $maxAttempts = 5, int $lockoutMinutes = 30): bool
     {
-        $user = $this->find($userId);
+        $user = $this->where('username', $identifier)
+            ->orWhere('email', $identifier)
+            ->first();
+
         if (!$user) {
             return false;
         }
 
-        $result = $this->update($userId, ['is_active' => 1]);
+        $attempts = $user['login_attempts'] + 1;
+        $updateData = ['login_attempts' => $attempts];
 
-        if ($result) {
-            log_message('info', "User activated: {$user['username']} (ID: {$userId})");
-            $this->clearUserCache();
+        if ($attempts >= $maxAttempts) {
+            $updateData['locked_until'] = date('Y-m-d H:i:s', strtotime("+{$lockoutMinutes} minutes"));
         }
 
-        return $result;
+        return $this->update($user['id'], $updateData);
+    }
+
+    /**
+     * Check if user is locked
+     */
+    public function isLocked(string $identifier): bool
+    {
+        $user = $this->where('username', $identifier)
+            ->orWhere('email', $identifier)
+            ->first();
+
+        if (!$user || !$user['locked_until']) {
+            return false;
+        }
+
+        return strtotime($user['locked_until']) > time();
     }
 
     /**
      * Clear user cache
      */
-    private function clearUserCache(): void
+    public static function clearUserCache(): void
     {
-        $this->userCache = [];
+        self::$userCache = [];
+        self::$permissionCache = [];
     }
 
     /**
-     * Check jika username sudah ada (untuk validation)
+     * Get users by role
      */
-    public function isUsernameExists(string $username, int $excludeId = null): bool
+    public function getUsersByRole(string $roleSlug): array
     {
-        $builder = $this->where('username', $username);
-
-        if ($excludeId) {
-            $builder->where('id !=', $excludeId);
-        }
-
-        return $builder->countAllResults() > 0;
+        return $this->select('users.*')
+            ->join('roles', 'roles.id = users.role_id')
+            ->where('roles.slug', $roleSlug)
+            ->where('users.is_active', 1)
+            ->where('users.deleted_at', null)
+            ->findAll();
     }
 
     /**
-     * Check jika email sudah ada (untuk validation)
+     * Bulk update users
      */
-    public function isEmailExists(string $email, int $excludeId = null): bool
+    public function bulkUpdate(array $userIds, array $updateData): bool
     {
-        $builder = $this->where('email', $email);
+        $builder = $this->builder();
+        $result = $builder->whereIn('id', $userIds)->update($updateData);
 
-        if ($excludeId) {
-            $builder->where('id !=', $excludeId);
+        if ($result) {
+            self::clearUserCache();
         }
 
-        return $builder->countAllResults() > 0;
+        return $result;
     }
 }

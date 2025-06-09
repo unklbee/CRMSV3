@@ -19,10 +19,10 @@
                     <!--begin::Info-->
                     <div class="flex-grow-1 me-2">
                         <!--begin::Username-->
-                        <a href="#" class="text-white text-hover-primary fs-6 fw-bold">Paul Melone</a>
+                        <a href="#" class="text-white text-hover-primary fs-6 fw-bold"><?= esc($user['first_name']) ?></a>
                         <!--end::Username-->
                         <!--begin::Description-->
-                        <span class="text-gray-600 fw-semibold d-block fs-8 mb-1">Python Dev</span>
+                        <span class="text-gray-600 fw-semibold d-block fs-8 mb-1"><?= esc($user['role']) ?></span>
                         <!--end::Description-->
                         <!--begin::Label-->
                         <div class="d-flex align-items-center text-success fs-9">
@@ -55,10 +55,10 @@
                                     <!--end::Avatar-->
                                     <!--begin::Username-->
                                     <div class="d-flex flex-column">
-                                        <div class="fw-bold d-flex align-items-center fs-5">Max Smith
-                                            <span class="badge badge-light-success fw-bold fs-8 px-2 py-1 ms-2">Pro</span>
+                                        <div class="fw-bold d-flex align-items-center fs-5"><?= esc($user['first_name']) ?>
+                                            <span class="badge badge-light-success fw-bold fs-8 px-2 py-1 ms-2"><?= esc($user['role']) ?></span>
                                         </div>
-                                        <a href="#" class="fw-semibold text-muted text-hover-primary fs-7">max@kt.com</a>
+                                        <a href="#" class="fw-semibold text-muted text-hover-primary fs-7"><?= esc($user['email']) ?></a>
                                     </div>
                                     <!--end::Username-->
                                 </div>
@@ -69,16 +69,16 @@
                             <!--end::Menu separator-->
                             <!--begin::Menu item-->
                             <div class="menu-item px-5">
-                                <a href="account/overview.html" class="menu-link px-5">My Profile</a>
+                                <a href="#" class="menu-link px-5">My Profile</a>
                             </div>
                             <!--end::Menu item-->
                             <!--begin::Menu item-->
                             <div class="menu-item px-5">
-                                <a href="apps/projects/list.html" class="menu-link px-5">
+                                <a href="#" class="menu-link px-5">
                                     <span class="menu-text">My Projects</span>
                                     <span class="menu-badge">
-														<span class="badge badge-light-danger badge-circle fw-bold fs-7">3</span>
-													</span>
+                                        <span class="badge badge-light-danger badge-circle fw-bold fs-7">3</span>
+                                    </span>
                                 </a>
                             </div>
                             <!--end::Menu item-->
@@ -214,7 +214,7 @@
                             <!--end::Menu item-->
                             <!--begin::Menu item-->
                             <div class="menu-item px-5">
-                                <a href="authentication/layouts/corporate/sign-in.html" class="menu-link px-5">Sign
+                                <a href="/auth/logout" class="menu-link px-5">Sign
                                     Out</a>
                             </div>
                             <!--end::Menu item-->
@@ -245,15 +245,15 @@
                 <!--begin:Menu item-->
                 <div class="menu-item">
                     <!--begin:Menu link-->
-                    <a class="menu-link" href="#" target="_blank">
-                            <span class="menu-icon">
-                                <i class="ki-duotone ki-code fs-2">
-                                    <span class="path1"></span>
-                                    <span class="path2"></span>
-                                    <span class="path3"></span>
-                                    <span class="path4"></span>
-                                </i>
-                            </span>
+                    <a class="menu-link" href="/admin/dashboard">
+                        <span class="menu-icon">
+                            <i class="ki-duotone ki-code fs-2">
+                                <span class="path1"></span>
+                                <span class="path2"></span>
+                                <span class="path3"></span>
+                                <span class="path4"></span>
+                            </i>
+                        </span>
                         <span class="menu-title">Dashboard</span>
                     </a>
                     <!--end:Menu link-->
@@ -270,22 +270,59 @@
                 <!--end:Menu item-->
 
                 <!--begin:Menu item-->
-                <div class="menu-item">
+                <div data-kt-menu-trigger="click" class="menu-item menu-accordion">
                     <!--begin:Menu link-->
-                    <a class="menu-link"
-                       href="https://preview.keenthemes.com/html/metronic/docs/getting-started/changelog"
-                       target="_blank">
-										<span class="menu-icon">
-											<i class="ki-duotone ki-code fs-2">
-												<span class="path1"></span>
-												<span class="path2"></span>
-												<span class="path3"></span>
-												<span class="path4"></span>
-											</i>
-										</span>
-                        <span class="menu-title">Pengguna</span>
-                    </a>
+                    <span class="menu-link">
+                        <span class="menu-icon">
+                            <i class="ki-duotone ki-abstract-28 fs-2">
+                                <span class="path1"></span>
+                                <span class="path2"></span>
+                            </i>
+                        </span>
+                        <span class="menu-title">Manajemen Pengguna</span>
+                        <span class="menu-arrow"></span>
+                    </span>
                     <!--end:Menu link-->
+                    <!--begin:Menu sub-->
+                    <div class="menu-sub menu-sub-accordion">
+                        <!--begin:Menu item-->
+                        <div class="menu-item">
+                            <!--begin:Menu link-->
+                            <a class="menu-link" href="<?= site_url('/users') ?>">
+                                <span class="menu-bullet">
+                                    <span class="bullet bullet-dot"></span>
+                                </span>
+                                <span class="menu-title">Daftar Pengguna</span>
+                            </a>
+                            <!--end:Menu link-->
+                        </div>
+                        <!--end:Menu item-->
+                        <!--begin:Menu item-->
+                        <div class="menu-item">
+                            <!--begin:Menu link-->
+                            <a class="menu-link" href="#">
+                                <span class="menu-bullet">
+                                    <span class="bullet bullet-dot"></span>
+                                </span>
+                                <span class="menu-title">Roles</span>
+                            </a>
+                            <!--end:Menu link-->
+                        </div>
+                        <!--end:Menu item-->
+                        <!--begin:Menu item-->
+                        <div class="menu-item">
+                            <!--begin:Menu link-->
+                            <a class="menu-link" href="apps/user-management/permissions.html">
+                                <span class="menu-bullet">
+                                    <span class="bullet bullet-dot"></span>
+                                </span>
+                                <span class="menu-title">Permissions</span>
+                            </a>
+                            <!--end:Menu link-->
+                        </div>
+                        <!--end:Menu item-->
+                    </div>
+                    <!--end:Menu sub-->
                 </div>
                 <!--end:Menu item-->
             </div>
