@@ -19,10 +19,10 @@
                     <!--begin::Info-->
                     <div class="flex-grow-1 me-2">
                         <!--begin::Username-->
-                        <a href="#" class="text-white text-hover-primary fs-6 fw-bold"><?= esc($user['first_name']) ?></a>
+                        <a href="#" class="text-white text-hover-primary fs-6 fw-bold">Nama</a>
                         <!--end::Username-->
                         <!--begin::Description-->
-                        <span class="text-gray-600 fw-semibold d-block fs-8 mb-1"><?= esc($user['role']) ?></span>
+                        <span class="text-gray-600 fw-semibold d-block fs-8 mb-1">rols</span>
                         <!--end::Description-->
                         <!--begin::Label-->
                         <div class="d-flex align-items-center text-success fs-9">
@@ -55,10 +55,10 @@
                                     <!--end::Avatar-->
                                     <!--begin::Username-->
                                     <div class="d-flex flex-column">
-                                        <div class="fw-bold d-flex align-items-center fs-5"><?= esc($user['first_name']) ?>
-                                            <span class="badge badge-light-success fw-bold fs-8 px-2 py-1 ms-2"><?= esc($user['role']) ?></span>
+                                        <div class="fw-bold d-flex align-items-center fs-5">Nama
+                                            <span class="badge badge-light-success fw-bold fs-8 px-2 py-1 ms-2">Jabatan</span>
                                         </div>
-                                        <a href="#" class="fw-semibold text-muted text-hover-primary fs-7"><?= esc($user['email']) ?></a>
+                                        <a href="#" class="fw-semibold text-muted text-hover-primary fs-7">Email</a>
                                     </div>
                                     <!--end::Username-->
                                 </div>

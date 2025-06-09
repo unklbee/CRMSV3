@@ -41,17 +41,17 @@ class DashboardController extends BaseController
 
         // Role-based dashboard routing
         switch ($roleSlug) {
+            case 'manager':
             case 'admin':
                 return $this->adminDashboard();
 
-            case 'manager':
-                return $this->adminDashboard(); // Manager uses same dashboard as admin
+            // Manager uses same dashboard as admin
 
+            case 'support':
             case 'technician':
                 return $this->technicianDashboard();
 
-            case 'support':
-                return $this->technicianDashboard(); // Support uses same dashboard as technician
+            // Support uses same dashboard as technician
 
             case 'customer':
                 return $this->customerDashboard();
