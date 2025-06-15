@@ -31,7 +31,7 @@
 <!--begin::Body-->
 <body id="kt_body" class="aside-enabled">
 <!--begin::Theme mode setup on page load-->
-<?= view('admin/layout/partials/theme_mode') ?>
+<?= view('dashboard/admin/layout/partials/theme_mode') ?>
 <!--end::Theme mode setup on page load-->
 <!--begin::Main-->
 <!--begin::Root-->
@@ -39,18 +39,18 @@
     <!--begin::Page-->
     <div class="page d-flex flex-row flex-column-fluid">
         <!--begin::Aside-->
-        <?= view('admin/layout/partials/aside') ?>
+        <?= view('dashboard/admin/layout/partials/aside') ?>
         <!--end::Aside-->
         <!--begin::Wrapper-->
         <div class="wrapper d-flex flex-column flex-row-fluid" id="kt_wrapper">
             <!--begin::Header-->
-            <?= view('admin/layout/partials/header') ?>
+            <?= view('dashboard/admin/layout/partials/header') ?>
             <!--end::Header-->
             <!--begin::Content-->
             <?= $this->renderSection('content') ?>
             <!--end::Content-->
             <!--begin::Footer-->
-            <?= view('admin/layout/partials/footer') ?>
+            <?= view('dashboard/admin/layout/partials/footer') ?>
             <!--end::Footer-->
         </div>
         <!--end::Wrapper-->
@@ -61,7 +61,7 @@
 
 <!--end::Main-->
 <!--begin::Scrolltop-->
-<?= view('admin/layout/partials/scrolltop') ?>
+<?= view('dashboard/admin/layout/partials/scrolltop') ?>
 <!--end::Scrolltop-->
 
 <!--begin::Javascript-->

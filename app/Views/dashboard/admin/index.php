@@ -1,4 +1,4 @@
-<?= $this->extend('admin/layout/main') ?>
+<?= $this->extend('dashboard/admin/layout/main') ?>
 
 <?= $this->section('content') ?>
     <div class="content d-flex flex-column flex-column-fluid" id="kt_content">

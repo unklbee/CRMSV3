@@ -90,7 +90,7 @@ class DashboardController extends BaseController
             'system_info' => $this->getSystemInfo()
         ];
 
-        return view('dashboard/admin', $data);
+        return view('dashboard/admin/index', $data);
     }
 
     /**
