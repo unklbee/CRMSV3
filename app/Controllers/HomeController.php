@@ -11,12 +11,8 @@ class HomeController extends BaseController
     public function __construct()
     {
         $this->session = session();
-        helper(['url', 'form']);
     }
 
-    /**
-     * Frontend Homepage - localhost:8080/
-     */
     public function index()
     {
         // Jika user sudah login, redirect ke dashboard

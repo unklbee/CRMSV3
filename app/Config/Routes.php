@@ -14,13 +14,18 @@ use CodeIgniter\Router\RouteCollection;
 $routes->get('/', 'HomeController::index');
 
 // Public pages
-$routes->get('about', 'HomeController::about');
-$routes->get('services', 'HomeController::services');
-$routes->get('contact', 'HomeController::contact');
-$routes->post('contact', 'HomeController::processContact');
-$routes->get('pricing', 'HomeController::pricing');
-$routes->get('blog', 'HomeController::blog');
-$routes->get('blog/(:segment)', 'HomeController::blogPost/$1');
+// Frontend Routes
+$routes->get('/', 'HomeController::index');
+$routes->get('/services', 'HomeController::services');
+$routes->get('/services/(:segment)', 'HomeController::services/$1');
+$routes->get('/services/detail/(:segment)', 'HomeController::serviceDetail/$1');
+$routes->get('/about', 'HomeController::about');
+$routes->get('/contact', 'HomeController::contact');
+$routes->post('/contact/submit', 'HomeController::processContact');
+$routes->get('/blog', 'HomeController::blog');
+$routes->get('/blog/(:segment)', 'HomeController::blogPost/$1');
+$routes->get('/search', 'HomeController::search');
+$routes->get('/sitemap.xml', 'HomeController::sitemap');
 
 // Call-to-action
 $routes->get('get-started', 'HomeController::getStarted');
