@@ -45,7 +45,7 @@ $routes->group('auth', ['filter' => 'guest'], function($routes) {
     // Registration
     $routes->get('signup', 'AuthController::signup');
     $routes->get('register', 'AuthController::signup'); // Alias
-    $routes->post('register', 'AuthController::processRegister');
+    $routes->post('processRegister', 'AuthController::processRegister');
 
     // Password Recovery
     $routes->get('forgot-password', 'AuthController::forgotPassword');
@@ -91,6 +91,7 @@ $routes->group('admin', [
     $routes->group('users', function($routes) {
         $routes->get('/', 'UserController::index');
         $routes->get('datatables', 'UserController::datatables');
+        $routes->post('datatables', 'UserController::datatables');
         $routes->get('create', 'UserController::create');
         $routes->post('/', 'UserController::store');
         $routes->get('(:num)', 'UserController::show/$1');

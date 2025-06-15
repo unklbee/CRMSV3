@@ -6,7 +6,7 @@ use CodeIgniter\Cache\CacheInterface;
 use Config\Services;
 
 /**
- * Improved Rate Limiter untuk CodeIgniter 4
+ * Improved Rate Limiter untuk CodeIgniter 4 - Fixed untuk MAMP
  */
 class RateLimiter
 {
@@ -18,42 +18,58 @@ class RateLimiter
     }
 
     /**
-     * Check apakah request diizinkan berdasarkan rate limit
-     * Method ini yang dipanggil oleh RateLimitFilter
+     * Sanitize cache key untuk menghindari reserved characters
      */
-    public function isAllowed(string $key, int $maxAttempts, int $timeWindow): bool
+    private function sanitizeKey(string $key): string
     {
-        $cacheKey = 'rate_limit_' . $key;
-        $attempts = $this->cache->get($cacheKey, 0);
+        // Hapus karakter reserved: {}()/\@:
+        $key = preg_replace('/[{}()\\/\\\\@:]/', '_', $key);
 
-        // Jika sudah mencapai limit, tidak diizinkan
-        return $attempts < $maxAttempts;
+        // Pastikan key tidak kosong dan valid
+        if (empty($key)) {
+            $key = 'default_key';
+        }
+
+        // Batasi panjang key dan pastikan hanya karakter aman
+        $key = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $key);
+        $key = substr($key, 0, 200); // Batasi panjang
+
+        return $key;
     }
 
     /**
      * Check apakah request diizinkan berdasarkan rate limit
      */
+    public function isAllowed(string $key, int $maxAttempts, int $timeWindow): bool
+    {
+        $cacheKey = 'rate_limit_' . $this->sanitizeKey($key);
+        $attempts = $this->cache->get($cacheKey, 0);
+
+        return $attempts < $maxAttempts;
+    }
+
+    /**
+     * Attempt dengan sanitized key
+     */
     public function attempt(string $key, int $maxAttempts, int $timeWindow): bool
     {
-        $cacheKey = 'rate_limit_' . $key;
+        $cacheKey = 'rate_limit_' . $this->sanitizeKey($key);
         $attempts = $this->cache->get($cacheKey, 0);
 
         if ($attempts >= $maxAttempts) {
             return false;
         }
 
-        // Increment counter
         $this->cache->save($cacheKey, $attempts + 1, $timeWindow);
-
         return true;
     }
 
     /**
-     * Check remaining attempts tanpa increment
+     * Check remaining attempts
      */
     public function check(string $key, int $maxAttempts, int $timeWindow): bool
     {
-        $cacheKey = 'rate_limit_' . $key;
+        $cacheKey = 'rate_limit_' . $this->sanitizeKey($key);
         $attempts = $this->cache->get($cacheKey, 0);
 
         return $attempts < $maxAttempts;
@@ -64,7 +80,7 @@ class RateLimiter
      */
     public function getAttempts(string $key): int
     {
-        $cacheKey = 'rate_limit_' . $key;
+        $cacheKey = 'rate_limit_' . $this->sanitizeKey($key);
         return $this->cache->get($cacheKey, 0);
     }
 
@@ -82,7 +98,7 @@ class RateLimiter
      */
     public function clear(string $key): bool
     {
-        $cacheKey = 'rate_limit_' . $key;
+        $cacheKey = 'rate_limit_' . $this->sanitizeKey($key);
         return $this->cache->delete($cacheKey);
     }
 
@@ -91,7 +107,7 @@ class RateLimiter
      */
     public function isLockedOut(string $key): bool
     {
-        $lockKey = 'lockout_' . $key;
+        $lockKey = 'lockout_' . $this->sanitizeKey($key);
         return $this->cache->get($lockKey, false) !== false;
     }
 
@@ -100,7 +116,7 @@ class RateLimiter
      */
     public function setLockout(string $key, int $duration): bool
     {
-        $lockKey = 'lockout_' . $key;
+        $lockKey = 'lockout_' . $this->sanitizeKey($key);
         return $this->cache->save($lockKey, time(), $duration);
     }
 
@@ -109,14 +125,13 @@ class RateLimiter
      */
     public function getLockoutTime(string $key): int
     {
-        $lockKey = 'lockout_' . $key;
+        $lockKey = 'lockout_' . $this->sanitizeKey($key);
         $lockTime = $this->cache->get($lockKey, false);
 
         if ($lockTime === false) {
             return 0;
         }
 
-        // Simple implementation - return a reasonable remaining time
         return 1800; // 30 minutes
     }
 
@@ -125,20 +140,19 @@ class RateLimiter
      */
     public function clearLockout(string $key): bool
     {
-        $lockKey = 'lockout_' . $key;
+        $lockKey = 'lockout_' . $this->sanitizeKey($key);
         return $this->cache->delete($lockKey);
     }
 
     /**
-     * Hit rate limiter (simplified method)
+     * Hit rate limiter dengan sanitized key
      */
     public function hit(string $key, int $timeWindow): bool
     {
-        $cacheKey = 'throttle_' . $key;
+        $cacheKey = 'throttle_' . $this->sanitizeKey($key);
         $hits = $this->cache->get($cacheKey, 0);
 
         $this->cache->save($cacheKey, $hits + 1, $timeWindow);
-
         return true;
     }
 
@@ -148,25 +162,19 @@ class RateLimiter
     public function slidingWindow(string $key, int $maxAttempts, int $timeWindow): bool
     {
         $now = time();
-        $windowKey = 'sliding_' . $key;
+        $windowKey = 'sliding_' . $this->sanitizeKey($key);
 
-        // Get existing timestamps
         $timestamps = $this->cache->get($windowKey, []);
 
-        // Remove old timestamps outside window
         $timestamps = array_filter($timestamps, function($timestamp) use ($now, $timeWindow) {
             return ($now - $timestamp) < $timeWindow;
         });
 
-        // Check if we're within limit
         if (count($timestamps) >= $maxAttempts) {
             return false;
         }
 
-        // Add current timestamp
         $timestamps[] = $now;
-
-        // Save updated timestamps
         $this->cache->save($windowKey, $timestamps, $timeWindow);
 
         return true;
@@ -185,12 +193,10 @@ class RateLimiter
     }
 
     /**
-     * Cleanup expired entries (untuk maintenance)
+     * Cleanup expired entries
      */
     public function cleanup(): int
     {
-        // Most cache drivers handle TTL automatically
-        // Return 0 for compatibility
         return 0;
     }
 }

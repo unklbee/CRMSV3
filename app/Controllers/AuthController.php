@@ -38,7 +38,7 @@ class AuthController extends BaseController
     /**
      * Show registration page
      */
-    public function signup(): string
+    public function signup(): string|RedirectResponse
     {
         if ($this->session->get('isLoggedIn')) {
             return redirect()->to('/dashboard');
